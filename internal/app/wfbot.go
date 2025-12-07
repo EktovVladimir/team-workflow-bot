@@ -2,12 +2,20 @@ package app
 
 import (
 	"context"
+	"os"
 	"sync"
+	"team-workflow-bot/internal/bag"
+	"team-workflow-bot/internal/codereview"
+	"team-workflow-bot/internal/environment"
 	"team-workflow-bot/internal/githubflow"
 	"team-workflow-bot/internal/slackflow"
 
 	"log"
 	"team-workflow-bot/internal/config"
+
+	"github.com/andygrunwald/go-jira"
+	"github.com/google/go-github/v79/github"
+	"github.com/slack-go/slack"
 )
 
 type App struct {
@@ -23,7 +31,42 @@ func NewApp(cfg *config.Config) *App {
 func (a *App) Start(ctx context.Context) *sync.WaitGroup {
 	wg := &sync.WaitGroup{}
 
-	slackListener := slackflow.NewListenerAndClient(a.config)
+	slackClient := slack.New(
+		a.config.Slack.BotToken,
+		slack.OptionDebug(environment.IsDev),
+		slack.OptionAppLevelToken(a.config.Slack.AppToken),
+		//TODO убрать лог
+		slack.OptionLog(log.New(os.Stdout, "slack-bot: ", log.Lshortfile|log.LstdFlags)),
+	)
+
+	githubClient := github.NewClient(nil).WithAuthToken(a.config.GitHub.Token)
+
+	tp := jira.BasicAuthTransport{
+		Username: a.config.Jira.Email,
+		Password: a.config.Jira.Token,
+	}
+	jiraClient, _ := jira.NewClient(tp.Client(), a.config.Jira.BaseUrl)
+
+	dependencies := bag.DependenciesBag{
+		Client: bag.ClientsBag{
+			Slack:  slackClient,
+			GitHub: githubClient,
+			Jira:   jiraClient,
+		},
+	}
+
+	codeReviewHandler := codereview.NewHandler(dependencies)
+
+	slackListener := slackflow.NewListener(
+		slackClient,
+		a.config,
+		slackflow.WithAnyHandler(codeReviewHandler))
+
+	ghHandler := githubflow.NewHandler(
+		a.config,
+		githubflow.WithAnyHandler(codeReviewHandler))
+
+	ghListener := githubflow.NewListener(ghHandler, a.config)
 
 	wg.Add(1)
 	go func() {
@@ -35,9 +78,6 @@ func (a *App) Start(ctx context.Context) *sync.WaitGroup {
 			return
 		}
 	}()
-
-	ghHandler := githubflow.NewHandler(a.config)
-	ghListener := githubflow.NewListener(ghHandler, a.config)
 
 	wg.Add(1)
 	go func() {

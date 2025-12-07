@@ -13,12 +13,16 @@ import (
 type HttpHandler func(w http.ResponseWriter, r *http.Request)
 
 type Handler struct {
-	config *config.Config
+	config        *config.Config
+	optionsConfig *handlerOptionConfig
 }
 
-func NewHandler(config *config.Config) *Handler {
+func NewHandler(config *config.Config, options ...HandlerOption) *Handler {
+	optionsConfig := newHandlerOptionConfig(options...)
+
 	return &Handler{
-		config: config,
+		config:        config,
+		optionsConfig: optionsConfig,
 	}
 }
 
@@ -43,8 +47,12 @@ func (l *Handler) handlePullRequestEvent(
 	ctx context.Context,
 	deliveryID string,
 	eventName string, event *github.PullRequestEvent) error {
-	//TODO
-	log.Printf("Handling GitHub PR event %v: %+v", eventName, event)
+	log.Printf("Handling GitHub PR event %v: %s", eventName, event.GetAction())
+
+	for _, h := range l.optionsConfig.prHandlers {
+		h.HandlePullRequestEvent(ctx, event)
+	}
+
 	return nil
 }
 
@@ -53,8 +61,12 @@ func (l *Handler) handlePullRequestReviewEvent(
 	deliveryID string,
 	eventName string,
 	event *github.PullRequestReviewEvent) error {
-	//TODO
-	log.Printf("Handling GitHub PR review event %v: %+v", eventName, event)
+	log.Printf("Handling GitHub PR review event %v: %s", eventName, event.GetAction())
+
+	for _, h := range l.optionsConfig.prReviewHandlers {
+		h.HandlePullRequestReviewEvent(ctx, event)
+	}
+
 	return nil
 }
 
@@ -63,7 +75,11 @@ func (l *Handler) handleWorkflowRunEvent(
 	deliveryID string,
 	eventName string,
 	event *github.WorkflowRunEvent) error {
-	//TODO
-	log.Printf("Handling GitHub WF run event %v: %+v", eventName, event)
+	log.Printf("Handling GitHub WF run event %v: %s", eventName, event.GetAction())
+
+	for _, h := range l.optionsConfig.wfRunHandler {
+		h.HandleWorkflowRunEvent(ctx, event)
+	}
+
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"team-workflow-bot/internal/app"
 	"team-workflow-bot/internal/config"
+	"team-workflow-bot/internal/environment"
 	"time"
 )
 
@@ -16,7 +17,8 @@ func main() {
 	defer stop()
 	defer log.Print("Team workflow bot application finished")
 
-	cfg := config.LoadConfig()
+	environment.InitGlobal()
+	cfg := config.Load("team-workflow-bot")
 
 	application := app.NewApp(cfg)
 

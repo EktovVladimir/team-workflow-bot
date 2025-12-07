@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"team-workflow-bot/internal/config"
+	"team-workflow-bot/internal/environment"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -22,12 +23,12 @@ type Listener struct {
 func NewListener(slackClient *slack.Client, config *config.Config, options ...ListenerOption) *Listener {
 	socketClient := socketmode.New(
 		slackClient,
-		socketmode.OptionDebug(config.IsDebug),
+		socketmode.OptionDebug(environment.IsDev),
+		//TODO убрать лог
 		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
 	)
 
-	optionsConfig := &listenerOptionConfig{}
-	optionsConfig.setOptions(options...)
+	optionsConfig := newListenerOptionConfig(options...)
 
 	return &Listener{
 		SlackClient:   slackClient,
@@ -43,8 +44,9 @@ func NewListenerAndClient(config *config.Config, options ...ListenerOption) *Lis
 
 	slackClient := slack.New(
 		botToken,
-		slack.OptionDebug(config.IsDebug),
+		slack.OptionDebug(environment.IsDev),
 		slack.OptionAppLevelToken(appToken),
+		//TODO убрать лог
 		slack.OptionLog(log.New(os.Stdout, "slack-bot: ", log.Lshortfile|log.LstdFlags)),
 	)
 
@@ -88,16 +90,7 @@ func (l *Listener) handleEvent(ctx context.Context, evt socketmode.Event) {
 			return
 		}
 		l.handleEventInteraction(callback)
-	case socketmode.EventTypeHello:
-		log.Println("Hello received!")
-	case socketmode.EventTypeConnecting:
-		log.Println("Connecting to Slack with Socket Mode...")
-	case socketmode.EventTypeConnectionError:
-		log.Println("Connection failed. Retrying later...")
-	case socketmode.EventTypeConnected:
-		log.Println("Connected to Slack with Socket Mode.")
 	default:
-		log.Printf("Unhandled event type: %v\n", evt.Type)
 	}
 }
 
@@ -111,7 +104,9 @@ func (l *Listener) handleEventCommand(ctx context.Context, cmd slack.SlashComman
 	log.Printf("Received command: %+v\n", cmd)
 
 	for _, handler := range l.optionsConfig.commandHandlers {
-		handler.handleSlackSlashCommand(ctx, cmd)
+		go func() {
+			handler.HandleSlackSlashCommand(ctx, cmd)
+		}()
 	}
 }
 

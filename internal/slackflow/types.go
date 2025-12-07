@@ -7,5 +7,5 @@ import (
 )
 
 type SlackSlashCommandHandler interface {
-	handleSlackSlashCommand(ctx context.Context, cmd slack.SlashCommand) any
+	HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCommand)
 }
