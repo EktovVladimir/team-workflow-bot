@@ -1,0 +1,15 @@
+module team-workflow-bot
+
+go 1.25
+
+require (
+	github.com/cbrgm/githubevents/v2 v2.10.1
+	github.com/google/go-github/v79 v79.0.0
+	github.com/slack-go/slack v0.17.3
+)
+
+require (
+	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+)
