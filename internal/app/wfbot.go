@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"os"
 	"sync"
 	"team-workflow-bot/internal/bag"
 	"team-workflow-bot/internal/codereview"
@@ -31,12 +30,12 @@ func NewApp(cfg *config.Config) *App {
 func (a *App) Start(ctx context.Context) *sync.WaitGroup {
 	wg := &sync.WaitGroup{}
 
+	log.Println("Starting Team Workflow Bot...")
+
 	slackClient := slack.New(
 		a.config.Slack.BotToken,
 		slack.OptionDebug(environment.IsDev),
 		slack.OptionAppLevelToken(a.config.Slack.AppToken),
-		//TODO убрать лог
-		slack.OptionLog(log.New(os.Stdout, "slack-bot: ", log.Lshortfile|log.LstdFlags)),
 	)
 
 	githubClient := github.NewClient(nil).WithAuthToken(a.config.GitHub.Token)

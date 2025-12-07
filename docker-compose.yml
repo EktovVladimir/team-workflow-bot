@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: team-workflow-bot
+#    depends_on:
+#      - mongo
+    environment:
+      - APP_ENV=development
+      - TEAM_WORKFLOW_BOT_SLACK_APPTOKEN=${TEAM_WORKFLOW_BOT_SLACK_APPTOKEN}
+      - TEAM_WORKFLOW_BOT_SLACK_BOTTOKEN=${TEAM_WORKFLOW_BOT_SLACK_BOTTOKEN}
+      - TEAM_WORKFLOW_BOT_GITHUB_TOKEN=${TEAM_WORKFLOW_BOT_GITHUB_TOKEN}
+      - TEAM_WORKFLOW_BOT_GITHUBHOOK_SECRETKEY=${TEAM_WORKFLOW_BOT_GITHUBHOOK_SECRETKEY}
+      - TEAM_WORKFLOW_BOT_JIRA_EMAIL=${TEAM_WORKFLOW_BOT_JIRA_EMAIL}
+      - TEAM_WORKFLOW_BOT_JIRA_TOKEN=${TEAM_WORKFLOW_BOT_JIRA_TOKEN}
+      - TEAM_WORKFLOW_BOT_JIRA_BASEURL=${TEAM_WORKFLOW_BOT_JIRA_BASEURL}
+      - TEAM_WORKFLOW_BOT_MONGO_CONNECTION=${TEAM_WORKFLOW_BOT_MONGO_CONNECTION}
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:6.0
+    container_name: team-workflow-bot-mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=root
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+

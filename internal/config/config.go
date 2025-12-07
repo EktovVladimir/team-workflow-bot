@@ -15,6 +15,7 @@ type Config struct {
 	GitHub     GitHub     `mapstructure:"github"`
 	GitHubHook GitHubHook `mapstructure:"githubHook"`
 	Jira       Jira       `mapstructure:"jira"`
+	Mongo      Mongo      `mapstructure:"mongo"`
 }
 
 type Slack struct {
@@ -39,10 +40,15 @@ type Jira struct {
 	BaseUrl string `mapstructure:"baseUrl"`
 }
 
+type Mongo struct {
+	Connection string `mapstructure:"connection"`
+	DB         string `mapstructure:"db"`
+}
+
 func Load(appName string) *Config {
 	configPath := filepath.Join("configs", fmt.Sprintf("%s.%s.json", appName, environment.Env))
 
-	//TODO setDefaults()
+	setDefaults()
 
 	viper.SetConfigFile(configPath)
 	viper.SetConfigType("json")
@@ -62,4 +68,24 @@ func Load(appName string) *Config {
 	}
 
 	return &cfg
+}
+
+func setDefaults() {
+	//Note: установка дефолтных значений обязательна, иначе не будут подтягиваться env переменные
+	viper.SetDefault("slack.appToken", "")
+	viper.SetDefault("slack.botToken", "")
+
+	viper.SetDefault("github.token", "")
+
+	viper.SetDefault("githubHook.secretKey", "")
+	viper.SetDefault("githubHook.baseUrl", "localhost")
+	viper.SetDefault("githubHook.port", 8081)
+	viper.SetDefault("githubHook.route", "/gh/hook")
+
+	viper.SetDefault("jira.email", "")
+	viper.SetDefault("jira.token", "")
+	viper.SetDefault("jira.baseUrl", "https://aviasales.atlassian.net")
+
+	viper.SetDefault("mongo.connection", "mongodb://localhost:27017")
+	viper.SetDefault("mongo.db", "wf")
 }

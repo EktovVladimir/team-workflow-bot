@@ -3,7 +3,6 @@ package slackflow
 import (
 	"context"
 	"log"
-	"os"
 	"team-workflow-bot/internal/config"
 	"team-workflow-bot/internal/environment"
 
@@ -24,8 +23,6 @@ func NewListener(slackClient *slack.Client, config *config.Config, options ...Li
 	socketClient := socketmode.New(
 		slackClient,
 		socketmode.OptionDebug(environment.IsDev),
-		//TODO убрать лог
-		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
 	)
 
 	optionsConfig := newListenerOptionConfig(options...)
@@ -46,8 +43,6 @@ func NewListenerAndClient(config *config.Config, options ...ListenerOption) *Lis
 		botToken,
 		slack.OptionDebug(environment.IsDev),
 		slack.OptionAppLevelToken(appToken),
-		//TODO убрать лог
-		slack.OptionLog(log.New(os.Stdout, "slack-bot: ", log.Lshortfile|log.LstdFlags)),
 	)
 
 	return NewListener(slackClient, config, options...)
