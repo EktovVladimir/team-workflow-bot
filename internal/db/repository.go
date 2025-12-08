@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"team-workflow-bot/internal/models"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -18,7 +19,7 @@ func NewRepository(db *mongo.Database) *Repository {
 	}
 }
 
-func (r *Repository) CreateUser(ctx context.Context, item *User) (string, error) {
+func (r *Repository) CreateUser(ctx context.Context, item *models.User) (string, error) {
 	res, err := r.db.Collection("Users").InsertOne(ctx, item)
 	if err != nil {
 		return "", err
@@ -32,7 +33,7 @@ func (r *Repository) CreateUser(ctx context.Context, item *User) (string, error)
 	}
 }
 
-func (r *Repository) UpdateUser(ctx context.Context, item *User) error {
+func (r *Repository) UpdateUser(ctx context.Context, item *models.User) error {
 	_, err := r.db.Collection("Users").UpdateOne(
 		ctx,
 		bson.M{"slack_id": item.SlackId},
@@ -42,8 +43,8 @@ func (r *Repository) UpdateUser(ctx context.Context, item *User) error {
 	return err
 }
 
-func (r *Repository) GetBySlackId(ctx context.Context, slackId string) (*User, error) {
-	var user User
+func (r *Repository) GetBySlackId(ctx context.Context, slackId string) (*models.User, error) {
+	var user models.User
 	err := r.db.Collection("Users").
 		FindOne(ctx, bson.M{"slack_id": slackId}).
 		Decode(&user)
@@ -58,7 +59,7 @@ func (r *Repository) GetBySlackId(ctx context.Context, slackId string) (*User, e
 	return &user, nil
 }
 
-func (r *Repository) CreateRole(ctx context.Context, item *Role) (string, error) {
+func (r *Repository) CreateRole(ctx context.Context, item *models.Role) (string, error) {
 	res, err := r.db.Collection("Roles").InsertOne(ctx, item)
 	if err != nil {
 		return "", err
@@ -72,7 +73,7 @@ func (r *Repository) CreateRole(ctx context.Context, item *Role) (string, error)
 	}
 }
 
-func (r *Repository) CreateTeam(ctx context.Context, item *Team) (string, error) {
+func (r *Repository) CreateTeam(ctx context.Context, item *models.Team) (string, error) {
 	res, err := r.db.Collection("Teams").InsertOne(ctx, item)
 	if err != nil {
 		return "", err
@@ -86,35 +87,35 @@ func (r *Repository) CreateTeam(ctx context.Context, item *Team) (string, error)
 	}
 }
 
-func (r *Repository) GetAllRoles(ctx context.Context) ([]Role, error) {
-	var roles []Role
+func (r *Repository) GetAllRoles(ctx context.Context) ([]models.Role, error) {
+	var roles []models.Role
 	cursor, err := r.db.Collection("Roles").Find(ctx, bson.M{})
 	if err != nil {
-		return []Role{}, err
+		return []models.Role{}, err
 	}
 	if err = cursor.All(ctx, &roles); err != nil {
-		return []Role{}, err
+		return []models.Role{}, err
 	}
 
 	if roles == nil {
-		roles = []Role{}
+		roles = []models.Role{}
 	}
 
 	return roles, nil
 }
 
-func (r *Repository) GetAllTeams(ctx context.Context) ([]Team, error) {
-	var teams []Team
+func (r *Repository) GetAllTeams(ctx context.Context) ([]models.Team, error) {
+	var teams []models.Team
 	cursor, err := r.db.Collection("Teams").Find(ctx, bson.M{})
 	if err != nil {
-		return []Team{}, err
+		return []models.Team{}, err
 	}
 	if err = cursor.All(ctx, &teams); err != nil {
-		return []Team{}, err
+		return []models.Team{}, err
 	}
 
 	if teams == nil {
-		teams = []Team{}
+		teams = []models.Team{}
 	}
 
 	return teams, nil

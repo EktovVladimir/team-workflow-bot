@@ -2,19 +2,17 @@ package app
 
 import (
 	"context"
+	"log"
 	"os"
 	"sync"
 	"team-workflow-bot/internal/bag"
+	"team-workflow-bot/internal/config"
 	"team-workflow-bot/internal/db"
-	"team-workflow-bot/internal/environment"
-	"team-workflow-bot/internal/githubflow"
 	"team-workflow-bot/internal/global"
 	"team-workflow-bot/internal/handlers/codereview"
 	"team-workflow-bot/internal/handlers/configurator"
-	"team-workflow-bot/internal/slackflow"
-
-	"log"
-	"team-workflow-bot/internal/config"
+	"team-workflow-bot/internal/integrations/githubflow"
+	"team-workflow-bot/internal/integrations/slackflow"
 
 	"github.com/andygrunwald/go-jira"
 	"github.com/google/go-github/v79/github"
@@ -57,7 +55,7 @@ func (a *App) Start(ctx context.Context) {
 
 	slackClient := slack.New(
 		a.config.Slack.BotToken,
-		slack.OptionDebug(environment.IsDev),
+		slack.OptionDebug(global.IsDev),
 		slack.OptionAppLevelToken(a.config.Slack.AppToken),
 		slack.OptionLog(log.New(os.Stdout, "slack-api: ", log.Lshortfile|log.LstdFlags)),
 	)

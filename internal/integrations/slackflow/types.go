@@ -10,7 +10,7 @@ import (
 type AckCallback func(payload ...any)
 
 type SlackSlashCommandHandler interface {
-	HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCommand)
+	HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCommand, ack AckCallback)
 }
 
 type SlackDirectMessageEventHandler interface {

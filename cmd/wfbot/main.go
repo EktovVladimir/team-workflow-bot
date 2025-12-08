@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"team-workflow-bot/internal/app"
 	"team-workflow-bot/internal/config"
-	"team-workflow-bot/internal/environment"
+	"team-workflow-bot/internal/global"
 	"time"
 )
 
@@ -19,7 +19,7 @@ func main() {
 
 	log.SetOutput(os.Stdout)
 
-	environment.InitGlobal()
+	global.InitGlobal()
 	cfg := config.Load("team-workflow-bot")
 
 	application := app.NewApp(cfg)

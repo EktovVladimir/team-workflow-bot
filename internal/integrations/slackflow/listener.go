@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 	"team-workflow-bot/internal/config"
-	"team-workflow-bot/internal/environment"
+	"team-workflow-bot/internal/global"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -23,7 +23,7 @@ type Listener struct {
 func NewListener(slackClient *slack.Client, config *config.Config, options ...ListenerOption) *Listener {
 	socketClient := socketmode.New(
 		slackClient,
-		socketmode.OptionDebug(environment.IsDev),
+		socketmode.OptionDebug(global.IsDev),
 		socketmode.OptionLog(log.New(os.Stdout, "slack-socket: ", log.Lshortfile|log.LstdFlags)),
 	)
 
@@ -59,6 +59,7 @@ func (l *Listener) handleEvent(ctx context.Context, evt socketmode.Event) {
 		if !ok {
 			return
 		}
+		// Тут можем сразу ack-нуть, так как не требуется валидация.
 		l.socketClient.Ack(*evt.Request)
 		l.handleEventApi(ctx, eventsAPIEvent)
 	case socketmode.EventTypeSlashCommand:
@@ -66,8 +67,7 @@ func (l *Listener) handleEvent(ctx context.Context, evt socketmode.Event) {
 		if !ok {
 			return
 		}
-		l.socketClient.Ack(*evt.Request)
-		l.handleEventCommand(ctx, cmd)
+		l.handleEventCommand(ctx, cmd, evt)
 	case socketmode.EventTypeInteractive:
 		callback, ok := evt.Data.(slack.InteractionCallback)
 		if !ok {
@@ -96,10 +96,12 @@ func (l *Listener) handleEventApi(ctx context.Context, event slackevents.EventsA
 	}
 }
 
-func (l *Listener) handleEventCommand(ctx context.Context, cmd slack.SlashCommand) {
+func (l *Listener) handleEventCommand(ctx context.Context, cmd slack.SlashCommand, evt socketmode.Event) {
 	for _, handler := range l.optionsConfig.commandHandlers {
 		go func() {
-			handler.HandleSlackSlashCommand(ctx, cmd)
+			handler.HandleSlackSlashCommand(ctx, cmd, func(payload ...any) {
+				l.socketClient.Ack(*evt.Request, payload...)
+			})
 		}()
 	}
 }

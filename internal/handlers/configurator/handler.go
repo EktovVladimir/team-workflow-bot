@@ -7,8 +7,9 @@ import (
 	"strings"
 	"team-workflow-bot/internal/bag"
 	"team-workflow-bot/internal/db"
-	"team-workflow-bot/internal/slackflow"
-	"team-workflow-bot/internal/slackflow/modals"
+	slackflow2 "team-workflow-bot/internal/integrations/slackflow"
+	modals2 "team-workflow-bot/internal/integrations/slackflow/modals"
+	"team-workflow-bot/internal/models"
 
 	"github.com/slack-go/slack"
 )
@@ -32,7 +33,8 @@ func NewSlackBotConfigurationHandler(
 
 func (s SlackBotConfigurationHandler) HandleSlackSlashCommand(
 	ctx context.Context,
-	cmd slack.SlashCommand) {
+	cmd slack.SlashCommand,
+	ack slackflow2.AckCallback) {
 	if cmd.Command != "/wfbot" {
 		return
 	}
@@ -60,15 +62,15 @@ func (s SlackBotConfigurationHandler) HandleSlackSlashCommand(
 func (s SlackBotConfigurationHandler) HandleSlackViewSubmission(
 	ctx context.Context,
 	event slack.InteractionCallback,
-	ack slackflow.AckCallback) {
+	ack slackflow2.AckCallback) {
 
-	if event.View.CallbackID == modals.GetCallbackId(modals.UserEditModal) {
+	if event.View.CallbackID == modals2.GetCallbackId(modals2.UserEditModal) {
 
-		slackId := modals.GetSelectedUser(event.View.State, modals.UserEditModal, modals.SlackField)
-		email := modals.GetInputText(event.View.State, modals.UserEditModal, modals.EmailField)
-		githubName := modals.GetInputText(event.View.State, modals.UserEditModal, modals.GithubField)
-		roles := modals.GetMultiSelectValues(event.View.State, modals.UserEditModal, modals.RolesField)
-		teams := modals.GetMultiSelectValues(event.View.State, modals.UserEditModal, modals.TeamsField)
+		slackId := modals2.GetSelectedUser(event.View.State, modals2.UserEditModal, modals2.SlackField)
+		email := modals2.GetInputText(event.View.State, modals2.UserEditModal, modals2.EmailField)
+		githubName := modals2.GetInputText(event.View.State, modals2.UserEditModal, modals2.GithubField)
+		roles := modals2.GetMultiSelectValues(event.View.State, modals2.UserEditModal, modals2.RolesField)
+		teams := modals2.GetMultiSelectValues(event.View.State, modals2.UserEditModal, modals2.TeamsField)
 
 		//TODO валидация
 
@@ -81,7 +83,7 @@ func (s SlackBotConfigurationHandler) HandleSlackViewSubmission(
 		}
 
 		if user == nil {
-			user = &db.User{
+			user = &models.User{
 				SlackId:     slackId,
 				Email:       email,
 				GitHubLogin: githubName,
@@ -114,12 +116,12 @@ func (s SlackBotConfigurationHandler) configureUsers(
 	args []string) {
 
 	if len(args) == 0 {
-		s.sendUserEditModal(ctx, data, &db.User{})
+		s.sendUserEditModal(ctx, data, &models.User{})
 		return
 	}
 
 	if len(args) == 1 {
-		userId, _ := slackflow.ParseEscapedLink(args[0])
+		userId, _ := slackflow2.ParseEscapedLink(args[0])
 
 		user, err := s.bag.DB.Repository.GetBySlackId(ctx, userId)
 		if err != nil && !errors.Is(err, db.RecordNotFound) {
@@ -128,7 +130,7 @@ func (s SlackBotConfigurationHandler) configureUsers(
 		}
 
 		if user == nil {
-			user = &db.User{
+			user = &models.User{
 				SlackId: userId,
 			}
 		}
@@ -140,10 +142,10 @@ func (s SlackBotConfigurationHandler) configureUsers(
 	//TODO парсим аргументы из текста и создаем пользователя
 }
 
-func (s SlackBotConfigurationHandler) sendUserEditModal(ctx context.Context, data interactivityData, user *db.User) {
+func (s SlackBotConfigurationHandler) sendUserEditModal(ctx context.Context, data interactivityData, user *models.User) {
 
-	modals.GetUserEditModal(user)
-	_, err := s.bag.Client.Slack.OpenViewContext(ctx, data.triggerId, modals.GetUserEditModal(user))
+	modals2.GetUserEditModal(user)
+	_, err := s.bag.Client.Slack.OpenViewContext(ctx, data.triggerId, modals2.GetUserEditModal(user))
 
 	if err != nil {
 		s.sendErrorMessage(ctx, data, "Не удалось открыть модальное окно для редактирования пользователя. "+err.Error())

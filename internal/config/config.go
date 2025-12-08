@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"team-workflow-bot/internal/environment"
+	"team-workflow-bot/internal/global"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -47,7 +47,7 @@ type Mongo struct {
 }
 
 func Load(appName string) *Config {
-	configPath := filepath.Join("configs", fmt.Sprintf("%s.%s.json", appName, environment.Env))
+	configPath := filepath.Join("configs", fmt.Sprintf("%s.%s.json", appName, global.Env))
 
 	setDefaults()
 

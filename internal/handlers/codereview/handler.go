@@ -3,8 +3,8 @@ package codereview
 import (
 	"context"
 	"fmt"
-	"log"
 	"team-workflow-bot/internal/bag"
+	"team-workflow-bot/internal/integrations/slackflow"
 
 	"github.com/google/go-github/v79/github"
 	"github.com/slack-go/slack"
@@ -21,28 +21,43 @@ func NewHandler(bag *bag.DependenciesBag) *Handler {
 }
 
 func (h Handler) HandlePullRequestEvent(ctx context.Context, event *github.PullRequestEvent) {
-	log.Println("CodeReview Handler - HandlePullRequestEvent called")
 }
 
 func (h Handler) HandlePullRequestReviewEvent(ctx context.Context, event *github.PullRequestReviewEvent) {
-	log.Println("CodeReview Handler - HandlePullRequestReviewEvent called")
 }
 
-func (h Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCommand) {
-	log.Println("CodeReview Handler - HandleSlackSlashCommand called")
-
-	if cmd.Command != "/cr" {
+func (h Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCommand, ack slackflow.AckCallback) {
+	if !h.IsCommandApplicable(cmd) {
 		return
 	}
 
-	userInfo, err := h.bag.Client.Slack.GetUserInfoContext(ctx, cmd.UserID)
+	slackRequester, err := h.bag.Client.Slack.GetUserInfoContext(ctx, cmd.UserID)
 	if err != nil {
 		return
 	}
 
-	contextText := fmt.Sprintf("Создано через бота по запросу @%s", userInfo.Name)
+	msgBlocks := GetExample(slackRequester.Name)
 
-	blocks := []slack.Block{
+	_, _, _, _ = h.bag.Client.Slack.SendMessageContext(
+		ctx,
+		cmd.ChannelID,
+		//TODO текст уведомления
+		slack.MsgOptionText("Запрос код-ревью", false),
+		slack.MsgOptionIconURL(slackRequester.Profile.Image192),
+		slack.MsgOptionUsername(slackRequester.RealName),
+		slack.MsgOptionBlocks(msgBlocks...))
+}
+
+func (h Handler) IsCommandApplicable(cmd slack.SlashCommand) bool {
+	return cmd.Command == "/cr"
+}
+
+//TODO remove example
+
+func GetExample(requesterSlackName string) []slack.Block {
+	contextText := fmt.Sprintf("Создано через бота по запросу @%s", requesterSlackName)
+
+	return []slack.Block{
 		slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn", "*#cr* @ivanov", false, false),
 			nil,
@@ -61,13 +76,4 @@ func (h Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCom
 			slack.NewTextBlockObject("mrkdwn", contextText, false, false),
 		),
 	}
-
-	_, _, _, _ = h.bag.Client.Slack.SendMessageContext(
-		ctx,
-		cmd.ChannelID,
-		//TODO
-		slack.MsgOptionText("Запрос код-ревью", false),
-		slack.MsgOptionIconURL(userInfo.Profile.Image192),
-		slack.MsgOptionUsername(userInfo.RealName),
-		slack.MsgOptionBlocks(blocks...))
 }
