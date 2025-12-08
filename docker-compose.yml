@@ -6,8 +6,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: team-workflow-bot
-#    depends_on:
-#      - mongo
+    depends_on:
+      - mongo
     environment:
       - APP_ENV=development
       - TEAM_WORKFLOW_BOT_SLACK_APPTOKEN=${TEAM_WORKFLOW_BOT_SLACK_APPTOKEN}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"team-workflow-bot/internal/environment"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -49,6 +50,8 @@ func Load(appName string) *Config {
 	configPath := filepath.Join("configs", fmt.Sprintf("%s.%s.json", appName, environment.Env))
 
 	setDefaults()
+
+	_ = godotenv.Load(".env")
 
 	viper.SetConfigFile(configPath)
 	viper.SetConfigType("json")

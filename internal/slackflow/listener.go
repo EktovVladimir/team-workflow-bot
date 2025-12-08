@@ -3,6 +3,7 @@ package slackflow
 import (
 	"context"
 	"log"
+	"os"
 	"team-workflow-bot/internal/config"
 	"team-workflow-bot/internal/environment"
 
@@ -23,6 +24,7 @@ func NewListener(slackClient *slack.Client, config *config.Config, options ...Li
 	socketClient := socketmode.New(
 		slackClient,
 		socketmode.OptionDebug(environment.IsDev),
+		socketmode.OptionLog(log.New(os.Stdout, "slack-socket: ", log.Lshortfile|log.LstdFlags)),
 	)
 
 	optionsConfig := newListenerOptionConfig(options...)
@@ -33,19 +35,6 @@ func NewListener(slackClient *slack.Client, config *config.Config, options ...Li
 		socketClient:  socketClient,
 		optionsConfig: optionsConfig,
 	}
-}
-
-func NewListenerAndClient(config *config.Config, options ...ListenerOption) *Listener {
-	botToken := config.Slack.BotToken
-	appToken := config.Slack.AppToken
-
-	slackClient := slack.New(
-		botToken,
-		slack.OptionDebug(environment.IsDev),
-		slack.OptionAppLevelToken(appToken),
-	)
-
-	return NewListener(slackClient, config, options...)
 }
 
 func (l *Listener) Run(ctx context.Context) error {
@@ -71,7 +60,7 @@ func (l *Listener) handleEvent(ctx context.Context, evt socketmode.Event) {
 			return
 		}
 		l.socketClient.Ack(*evt.Request)
-		l.handleEventApi(eventsAPIEvent)
+		l.handleEventApi(ctx, eventsAPIEvent)
 	case socketmode.EventTypeSlashCommand:
 		cmd, ok := evt.Data.(slack.SlashCommand)
 		if !ok {
@@ -84,20 +73,30 @@ func (l *Listener) handleEvent(ctx context.Context, evt socketmode.Event) {
 		if !ok {
 			return
 		}
-		l.handleEventInteraction(callback)
+		l.handleEventInteraction(ctx, callback, evt)
 	default:
 	}
 }
 
-func (l *Listener) handleEventApi(event slackevents.EventsAPIEvent) {
-
-	//TODO
-	log.Printf("Received event: %+v\n", event)
+func (l *Listener) handleEventApi(ctx context.Context, event slackevents.EventsAPIEvent) {
+	switch event.Type {
+	case slackevents.CallbackEvent:
+		innerEvent := event.InnerEvent
+		switch ev := innerEvent.Data.(type) {
+		case *slackevents.MessageEvent:
+			if ev.ChannelType == "im" {
+				for _, handler := range l.optionsConfig.directMessageHandlers {
+					go func() {
+						handler.HandleSlackDirectMessageEvent(ctx, ev)
+					}()
+				}
+			}
+		default:
+		}
+	}
 }
 
 func (l *Listener) handleEventCommand(ctx context.Context, cmd slack.SlashCommand) {
-	log.Printf("Received command: %+v\n", cmd)
-
 	for _, handler := range l.optionsConfig.commandHandlers {
 		go func() {
 			handler.HandleSlackSlashCommand(ctx, cmd)
@@ -105,17 +104,16 @@ func (l *Listener) handleEventCommand(ctx context.Context, cmd slack.SlashComman
 	}
 }
 
-func (l *Listener) handleEventInteraction(callback slack.InteractionCallback) {
-	//TODO
-	log.Printf("Received interaction: %+v\n", callback)
-
+func (l *Listener) handleEventInteraction(ctx context.Context, callback slack.InteractionCallback, evt socketmode.Event) {
 	switch callback.Type {
-	case slack.InteractionTypeBlockActions:
-		// See https://api.slack.com/apis/connections/socket-implement#button
-	case slack.InteractionTypeShortcut:
 	case slack.InteractionTypeViewSubmission:
-		// See https://api.slack.com/apis/connections/socket-implement#modal
-	case slack.InteractionTypeDialogSubmission:
+		for _, handler := range l.optionsConfig.viewSubmissionHandlers {
+			go func() {
+				handler.HandleSlackViewSubmission(ctx, callback, func(payload ...any) {
+					l.socketClient.Ack(*evt.Request, payload...)
+				})
+			}()
+		}
 	default:
 	}
 }

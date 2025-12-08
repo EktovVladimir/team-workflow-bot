@@ -3,7 +3,9 @@ package slackflow
 type ListenerOption func(cfg *listenerOptionConfig)
 
 type listenerOptionConfig struct {
-	commandHandlers []SlackSlashCommandHandler
+	commandHandlers        []SlackSlashCommandHandler
+	directMessageHandlers  []SlackDirectMessageEventHandler
+	viewSubmissionHandlers []SLackViewSubmissionHandler
 }
 
 func WithCommandHandler(handlers ...SlackSlashCommandHandler) ListenerOption {
@@ -12,11 +14,29 @@ func WithCommandHandler(handlers ...SlackSlashCommandHandler) ListenerOption {
 	}
 }
 
+func WithViewSubmissionHandler(handlers ...SLackViewSubmissionHandler) ListenerOption {
+	return func(cfg *listenerOptionConfig) {
+		cfg.viewSubmissionHandlers = append(cfg.viewSubmissionHandlers, handlers...)
+	}
+}
+
+func WithDirectMessageHandler(handlers ...SlackDirectMessageEventHandler) ListenerOption {
+	return func(cfg *listenerOptionConfig) {
+		cfg.directMessageHandlers = append(cfg.directMessageHandlers, handlers...)
+	}
+}
+
 func WithAnyHandler(handlers ...any) ListenerOption {
 	return func(cfg *listenerOptionConfig) {
 		for _, handler := range handlers {
 			if h, ok := handler.(SlackSlashCommandHandler); ok {
 				cfg.commandHandlers = append(cfg.commandHandlers, h)
+			}
+			if h, ok := handler.(SlackDirectMessageEventHandler); ok {
+				cfg.directMessageHandlers = append(cfg.directMessageHandlers, h)
+			}
+			if h, ok := handler.(SLackViewSubmissionHandler); ok {
+				cfg.viewSubmissionHandlers = append(cfg.viewSubmissionHandlers, h)
 			}
 		}
 	}

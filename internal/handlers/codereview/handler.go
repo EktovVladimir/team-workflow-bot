@@ -11,10 +11,10 @@ import (
 )
 
 type Handler struct {
-	bag bag.DependenciesBag
+	bag *bag.DependenciesBag
 }
 
-func NewHandler(bag bag.DependenciesBag) *Handler {
+func NewHandler(bag *bag.DependenciesBag) *Handler {
 	return &Handler{
 		bag: bag,
 	}
@@ -40,14 +40,9 @@ func (h Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCom
 		return
 	}
 
-	requesterAva := userInfo.Profile.Image48
-	contextText := fmt.Sprintf("@%s запрашивает код-ревью", userInfo.Name)
+	contextText := fmt.Sprintf("Создано через бота по запросу @%s", userInfo.Name)
 
 	blocks := []slack.Block{
-		slack.NewContextBlock("",
-			slack.NewImageBlockElement(requesterAva, userInfo.Name),
-			slack.NewTextBlockObject("mrkdwn", contextText, false, false),
-		),
 		slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn", "*#cr* @ivanov", false, false),
 			nil,
@@ -62,9 +57,17 @@ func (h Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCom
 			slack.NewTextBlockObject("mrkdwn", ":git-hub: <https://github.com/KosyanMedia/ota-flight-registry/pull/2092|OTAB-4413 += scoped transactions & use on change reg type> (FR)", false, false),
 			nil,
 			nil),
+		slack.NewContextBlock("",
+			slack.NewTextBlockObject("mrkdwn", contextText, false, false),
+		),
 	}
 
-	h.bag.Client.Slack.SendMessageContext(ctx, cmd.ChannelID, slack.MsgOptionBlocks(blocks...))
-
-	log.Println(requesterAva)
+	_, _, _, _ = h.bag.Client.Slack.SendMessageContext(
+		ctx,
+		cmd.ChannelID,
+		//TODO
+		slack.MsgOptionText("Запрос код-ревью", false),
+		slack.MsgOptionIconURL(userInfo.Profile.Image192),
+		slack.MsgOptionUsername(userInfo.RealName),
+		slack.MsgOptionBlocks(blocks...))
 }

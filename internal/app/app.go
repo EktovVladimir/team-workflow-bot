@@ -2,11 +2,15 @@ package app
 
 import (
 	"context"
+	"os"
 	"sync"
 	"team-workflow-bot/internal/bag"
-	"team-workflow-bot/internal/codereview"
+	"team-workflow-bot/internal/db"
 	"team-workflow-bot/internal/environment"
 	"team-workflow-bot/internal/githubflow"
+	"team-workflow-bot/internal/global"
+	"team-workflow-bot/internal/handlers/codereview"
+	"team-workflow-bot/internal/handlers/configurator"
 	"team-workflow-bot/internal/slackflow"
 
 	"log"
@@ -27,15 +31,35 @@ func NewApp(cfg *config.Config) *App {
 	}
 }
 
-func (a *App) Start(ctx context.Context) *sync.WaitGroup {
+func (a *App) Start(ctx context.Context) {
 	wg := &sync.WaitGroup{}
 
 	log.Println("Starting Team Workflow Bot...")
+
+	mongo, err := db.ConnectMongo(ctx, a.config)
+	if err != nil {
+		log.Fatalf("Error connecting to Mongo: %v", err)
+		return
+	}
+	defer func() {
+		_ = mongo.Disconnect(ctx)
+	}()
+
+	mongoDb := mongo.Database(a.config.Mongo.DB)
+
+	repository := db.NewRepository(mongoDb)
+
+	err = global.InitGlobalStorageData(ctx, repository)
+	if err != nil {
+		log.Fatalf("Error initializing global storage data: %v", err)
+		return
+	}
 
 	slackClient := slack.New(
 		a.config.Slack.BotToken,
 		slack.OptionDebug(environment.IsDev),
 		slack.OptionAppLevelToken(a.config.Slack.AppToken),
+		slack.OptionLog(log.New(os.Stdout, "slack-api: ", log.Lshortfile|log.LstdFlags)),
 	)
 
 	githubClient := github.NewClient(nil).WithAuthToken(a.config.GitHub.Token)
@@ -46,20 +70,27 @@ func (a *App) Start(ctx context.Context) *sync.WaitGroup {
 	}
 	jiraClient, _ := jira.NewClient(tp.Client(), a.config.Jira.BaseUrl)
 
-	dependencies := bag.DependenciesBag{
-		Client: bag.ClientsBag{
+	dependencies := &bag.DependenciesBag{
+		Client: bag.ClientBag{
 			Slack:  slackClient,
 			GitHub: githubClient,
 			Jira:   jiraClient,
 		},
+		DB: bag.DatabaseBag{
+			Mongo:      mongoDb,
+			Repository: repository,
+		},
 	}
 
 	codeReviewHandler := codereview.NewHandler(dependencies)
+	configureHandler := configurator.NewSlackBotConfigurationHandler(dependencies)
 
 	slackListener := slackflow.NewListener(
 		slackClient,
 		a.config,
-		slackflow.WithAnyHandler(codeReviewHandler))
+		slackflow.WithCommandHandler(codeReviewHandler),
+		slackflow.WithCommandHandler(configureHandler),
+		slackflow.WithViewSubmissionHandler(configureHandler))
 
 	ghHandler := githubflow.NewHandler(
 		a.config,
@@ -85,5 +116,5 @@ func (a *App) Start(ctx context.Context) *sync.WaitGroup {
 		_ = ghListener.Run(ctx)
 	}()
 
-	return wg
+	wg.Wait()
 }
