@@ -7,19 +7,10 @@ import (
 	"strings"
 	"team-workflow-bot/internal/bag"
 	"team-workflow-bot/internal/db"
-	"team-workflow-bot/internal/global"
 	"team-workflow-bot/internal/slackflow"
+	"team-workflow-bot/internal/slackflow/modals"
 
 	"github.com/slack-go/slack"
-)
-
-const (
-	userEditModal = "user_edit_modal"
-	slackField    = "slack"
-	emailField    = "email"
-	githubField   = "github"
-	rolesField    = "roles"
-	teamsField    = "teams"
 )
 
 type interactivityData struct {
@@ -71,14 +62,13 @@ func (s SlackBotConfigurationHandler) HandleSlackViewSubmission(
 	event slack.InteractionCallback,
 	ack slackflow.AckCallback) {
 
-	if event.View.CallbackID == getCallbackId(userEditModal) {
-		slackId := getViewStateValue(event.View.State, userEditModal, slackField).SelectedUser
-		email := getViewStateValue(event.View.State, userEditModal, emailField).Value
-		githubName := getViewStateValue(event.View.State, userEditModal, githubField).Value
-		rolesObjects := getViewStateValue(event.View.State, userEditModal, rolesField).SelectedOptions
-		roles := getStringValuesFromObjects(rolesObjects...)
-		teamsObjects := getViewStateValue(event.View.State, userEditModal, teamsField).SelectedOptions
-		teams := getStringValuesFromObjects(teamsObjects...)
+	if event.View.CallbackID == modals.GetCallbackId(modals.UserEditModal) {
+
+		slackId := modals.GetSelectedUser(event.View.State, modals.UserEditModal, modals.SlackField)
+		email := modals.GetInputText(event.View.State, modals.UserEditModal, modals.EmailField)
+		githubName := modals.GetInputText(event.View.State, modals.UserEditModal, modals.GithubField)
+		roles := modals.GetMultiSelectValues(event.View.State, modals.UserEditModal, modals.RolesField)
+		teams := modals.GetMultiSelectValues(event.View.State, modals.UserEditModal, modals.TeamsField)
 
 		//TODO валидация
 
@@ -151,56 +141,9 @@ func (s SlackBotConfigurationHandler) configureUsers(
 }
 
 func (s SlackBotConfigurationHandler) sendUserEditModal(ctx context.Context, data interactivityData, user *db.User) {
-	title := "Добавить Котлегу"
-	if user.Id != "" {
-		title = "Редактировать Котлегу"
-	}
 
-	_, err := s.bag.Client.Slack.OpenViewContext(ctx, data.triggerId, slack.ModalViewRequest{
-		CallbackID: getCallbackId(userEditModal),
-		Type:       slack.VTModal,
-		Title:      slackflow.GetEmojiPlainTextObject(title),
-		Submit:     slackflow.GetSimplePlainTextObject("Сохранить"),
-		Close:      slackflow.GetSimplePlainTextObject("Отмена"),
-		Blocks: slack.Blocks{
-			BlockSet: []slack.Block{
-				slackflow.GetUserInputBlock(
-					getBlockId(userEditModal, slackField),
-					getActionId(userEditModal, slackField),
-					"Slack",
-					slackflow.WithInitialValue(user.SlackId),
-					slackflow.WithPlaceholder("Пользователь slack (обязательно)")),
-				slackflow.GetTextInputBlock(
-					getBlockId(userEditModal, emailField),
-					getActionId(userEditModal, emailField),
-					"Email",
-					slackflow.WithInitialValue(user.Email),
-					slackflow.WithPlaceholder("Рабочий email Котлеги (необязательно)"),
-					slackflow.WithOptional(true)),
-				slackflow.GetTextInputBlock(
-					getBlockId(userEditModal, githubField),
-					getActionId(userEditModal, githubField),
-					"Github",
-					slackflow.WithInitialValue(user.GitHubLogin),
-					slackflow.WithPlaceholder("Логин на Github (необязательно, но очень желательно)"),
-					slackflow.WithOptional(true)),
-				slackflow.GetMultiSelectInputBlock(
-					getBlockId(userEditModal, teamsField),
-					getActionId(userEditModal, teamsField),
-					"Команды",
-					getAvailableTeamsOptionValues(global.GetStorage().AvailableTeams),
-					slackflow.WithInitialValues(user.Teams),
-					slackflow.WithOptional(true)),
-				slackflow.GetMultiSelectInputBlock(
-					getBlockId(userEditModal, rolesField),
-					getActionId(userEditModal, rolesField),
-					"Роли",
-					getAvailableRolesOptionValues(global.GetStorage().AvailableRoles),
-					slackflow.WithInitialValues(user.Roles),
-					slackflow.WithOptional(true)),
-			},
-		},
-	})
+	modals.GetUserEditModal(user)
+	_, err := s.bag.Client.Slack.OpenViewContext(ctx, data.triggerId, modals.GetUserEditModal(user))
 
 	if err != nil {
 		s.sendErrorMessage(ctx, data, "Не удалось открыть модальное окно для редактирования пользователя. "+err.Error())
@@ -224,56 +167,4 @@ func (s SlackBotConfigurationHandler) sendErrorMessage(
 			},
 		),
 	)
-}
-
-func getAvailableRolesOptionValues(roles []db.Role) []slackflow.SelectBlockOption {
-	var options []slackflow.SelectBlockOption
-
-	for _, role := range roles {
-		options = append(options, slackflow.SelectBlockOption{
-			First:  role.Name,
-			Second: &role.Name,
-			Third:  &role.Description,
-		})
-	}
-
-	return options
-}
-
-func getAvailableTeamsOptionValues(teams []db.Team) []slackflow.SelectBlockOption {
-	var options []slackflow.SelectBlockOption
-
-	for _, team := range teams {
-		options = append(options, slackflow.SelectBlockOption{
-			First:  team.Name,
-			Second: &team.Name,
-			Third:  &team.Description,
-		})
-	}
-
-	return options
-}
-
-func getViewStateValue(vs *slack.ViewState, base string, field string) slack.BlockAction {
-	return vs.Values[getBlockId(base, field)][getActionId(base, field)]
-}
-
-func getStringValuesFromObjects(objects ...slack.OptionBlockObject) []string {
-	var values []string
-	for _, obj := range objects {
-		values = append(values, obj.Value)
-	}
-	return values
-}
-
-func getActionId(base string, field string) string {
-	return base + "_" + field + "_action_id"
-}
-
-func getBlockId(base string, field string) string {
-	return base + "_" + field + "_block_id"
-}
-
-func getCallbackId(base string) string {
-	return base + "_callback_id"
 }
