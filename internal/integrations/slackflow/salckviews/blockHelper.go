@@ -1,4 +1,4 @@
-package slackflow
+package salckviews
 
 import (
 	"slices"
@@ -32,6 +32,32 @@ func GetUserInputBlock(blockId string, actionId string, label string, options ..
 		selectElement)
 }
 
+func GetUserMultiSelectInputBlock(
+	blockId string,
+	actionId string,
+	label string,
+	options ...BlockHelperOption) *slack.InputBlock {
+	cfg := applyBlockHelperOptions(options...)
+
+	labelElement := GetSimplePlainTextObject(label)
+
+	var hintElement *slack.TextBlockObject
+	if cfg.hint != "" {
+		hintElement = GetSimplePlainTextObject(cfg.hint)
+	}
+
+	selectElement := slack.NewOptionsMultiSelectBlockElement(slack.OptTypeUser, labelElement, actionId)
+
+	if len(cfg.initialValues) > 0 {
+		selectElement.InitialUsers = cfg.initialValues
+	}
+
+	return slack.NewInputBlock(
+		blockId,
+		labelElement,
+		hintElement,
+		selectElement)
+}
 func GetTextInputBlock(blockId string, actionId string, label string, options ...BlockHelperOption) *slack.InputBlock {
 	cfg := applyBlockHelperOptions(options...)
 

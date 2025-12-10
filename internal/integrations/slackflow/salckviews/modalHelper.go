@@ -1,7 +1,6 @@
-package modals
+package salckviews
 
 import (
-	"team-workflow-bot/internal/integrations/slackflow"
 	"team-workflow-bot/internal/models"
 
 	"github.com/slack-go/slack"
@@ -20,11 +19,11 @@ func GetMultiSelectValues(vs *slack.ViewState, base string, field string) []stri
 	return GetStringValuesFromObjects(objects...)
 }
 
-func GetAvailableRolesOptionValues(roles []models.Role) []slackflow.SelectBlockOption {
-	var options []slackflow.SelectBlockOption
+func GetAvailableRolesOptionValues(roles []models.Role) []SelectBlockOption {
+	var options []SelectBlockOption
 
 	for _, role := range roles {
-		options = append(options, slackflow.SelectBlockOption{
+		options = append(options, SelectBlockOption{
 			First:  role.Name,
 			Second: &role.Name,
 			Third:  &role.Description,
@@ -34,11 +33,11 @@ func GetAvailableRolesOptionValues(roles []models.Role) []slackflow.SelectBlockO
 	return options
 }
 
-func GetAvailableTeamsOptionValues(teams []models.Team) []slackflow.SelectBlockOption {
-	var options []slackflow.SelectBlockOption
+func GetAvailableTeamsOptionValues(teams []models.Team) []SelectBlockOption {
+	var options []SelectBlockOption
 
 	for _, team := range teams {
-		options = append(options, slackflow.SelectBlockOption{
+		options = append(options, SelectBlockOption{
 			First:  team.Name,
 			Second: &team.Name,
 			Third:  &team.Description,

@@ -1,9 +1,8 @@
-package modals
+package salckviews
 
 import (
 	"slices"
 	"team-workflow-bot/internal/global"
-	"team-workflow-bot/internal/integrations/slackflow"
 	"team-workflow-bot/internal/models"
 
 	"github.com/slack-go/slack"
@@ -25,51 +24,51 @@ func GetUserEditModal(user *models.User) slack.ModalViewRequest {
 	}
 
 	blocks := []slack.Block{
-		slackflow.GetUserInputBlock(
+		GetUserInputBlock(
 			GetBlockId(UserEditModal, SlackField),
 			GetActionId(UserEditModal, SlackField),
 			"Slack",
-			slackflow.WithInitialValue(user.SlackId),
-			slackflow.WithPlaceholder("Пользователь slack (обязательно)")),
-		slackflow.GetTextInputBlock(
+			WithInitialValue(user.SlackId),
+			WithPlaceholder("Пользователь slack (обязательно)")),
+		GetTextInputBlock(
 			GetBlockId(UserEditModal, EmailField),
 			GetActionId(UserEditModal, EmailField),
 			"Email",
-			slackflow.WithInitialValue(user.Email),
-			slackflow.WithPlaceholder("Рабочий email Котлеги (необязательно)"),
-			slackflow.WithOptional(true)),
-		slackflow.GetTextInputBlock(
+			WithInitialValue(user.Email),
+			WithPlaceholder("Рабочий email Котлеги (необязательно)"),
+			WithOptional(true)),
+		GetTextInputBlock(
 			GetBlockId(UserEditModal, GithubField),
 			GetActionId(UserEditModal, GithubField),
 			"Github",
-			slackflow.WithInitialValue(user.GitHubLogin),
-			slackflow.WithPlaceholder("Логин на Github (необязательно, но очень желательно)"),
-			slackflow.WithOptional(true)),
-		slackflow.GetMultiSelectInputBlock(
+			WithInitialValue(user.GitHubLogin),
+			WithPlaceholder("Логин на Github (необязательно, но очень желательно)"),
+			WithOptional(true)),
+		GetMultiSelectInputBlock(
 			GetBlockId(UserEditModal, TeamsField),
 			GetActionId(UserEditModal, TeamsField),
 			"Команды",
 			GetAvailableTeamsOptionValues(global.GetStorage().AvailableTeams),
-			slackflow.WithInitialValues(user.Teams),
-			slackflow.WithOptional(true)),
+			WithInitialValues(user.Teams),
+			WithOptional(true)),
 	}
 
 	if slices.Contains(user.Roles, "admin") {
-		blocks = append(blocks, slackflow.GetMultiSelectInputBlock(
+		blocks = append(blocks, GetMultiSelectInputBlock(
 			GetBlockId(UserEditModal, RolesField),
 			GetActionId(UserEditModal, RolesField),
 			"Роли",
 			GetAvailableRolesOptionValues(global.GetStorage().AvailableRoles),
-			slackflow.WithInitialValues(user.Roles),
-			slackflow.WithOptional(true)))
+			WithInitialValues(user.Roles),
+			WithOptional(true)))
 	}
 
 	return slack.ModalViewRequest{
 		CallbackID: GetCallbackId(UserEditModal),
 		Type:       slack.VTModal,
-		Title:      slackflow.GetEmojiPlainTextObject(title),
-		Submit:     slackflow.GetSimplePlainTextObject("Сохранить"),
-		Close:      slackflow.GetSimplePlainTextObject("Отмена"),
+		Title:      GetEmojiPlainTextObject(title),
+		Submit:     GetSimplePlainTextObject("Сохранить"),
+		Close:      GetSimplePlainTextObject("Отмена"),
 		Blocks: slack.Blocks{
 			BlockSet: blocks,
 		},
