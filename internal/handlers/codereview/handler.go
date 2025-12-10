@@ -5,18 +5,26 @@ import (
 	"fmt"
 	"team-workflow-bot/internal/bag"
 	"team-workflow-bot/internal/integrations/slackflow"
+	"team-workflow-bot/internal/models"
 
 	"github.com/google/go-github/v79/github"
 	"github.com/slack-go/slack"
 )
 
-type Handler struct {
-	bag *bag.DependenciesBag
+// Золотистый :)
+type retriever interface {
+	CollectCodeReviewContextFromSlack(ctx context.Context, request models.RequestRef) (*models.CodeReviewContext, error)
 }
 
-func NewHandler(bag *bag.DependenciesBag) *Handler {
+type Handler struct {
+	bag       *bag.DependenciesBag
+	retriever retriever
+}
+
+func NewHandler(bag *bag.DependenciesBag, retriever retriever) *Handler {
 	return &Handler{
-		bag: bag,
+		bag:       bag,
+		retriever: retriever,
 	}
 }
 

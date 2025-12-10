@@ -1,8 +1,9 @@
 package modals
 
 import (
+	"slices"
 	"team-workflow-bot/internal/global"
-	slackflow2 "team-workflow-bot/internal/integrations/slackflow"
+	"team-workflow-bot/internal/integrations/slackflow"
 	"team-workflow-bot/internal/models"
 
 	"github.com/slack-go/slack"
@@ -23,49 +24,54 @@ func GetUserEditModal(user *models.User) slack.ModalViewRequest {
 		title = "Редактировать"
 	}
 
+	blocks := []slack.Block{
+		slackflow.GetUserInputBlock(
+			GetBlockId(UserEditModal, SlackField),
+			GetActionId(UserEditModal, SlackField),
+			"Slack",
+			slackflow.WithInitialValue(user.SlackId),
+			slackflow.WithPlaceholder("Пользователь slack (обязательно)")),
+		slackflow.GetTextInputBlock(
+			GetBlockId(UserEditModal, EmailField),
+			GetActionId(UserEditModal, EmailField),
+			"Email",
+			slackflow.WithInitialValue(user.Email),
+			slackflow.WithPlaceholder("Рабочий email Котлеги (необязательно)"),
+			slackflow.WithOptional(true)),
+		slackflow.GetTextInputBlock(
+			GetBlockId(UserEditModal, GithubField),
+			GetActionId(UserEditModal, GithubField),
+			"Github",
+			slackflow.WithInitialValue(user.GitHubLogin),
+			slackflow.WithPlaceholder("Логин на Github (необязательно, но очень желательно)"),
+			slackflow.WithOptional(true)),
+		slackflow.GetMultiSelectInputBlock(
+			GetBlockId(UserEditModal, TeamsField),
+			GetActionId(UserEditModal, TeamsField),
+			"Команды",
+			GetAvailableTeamsOptionValues(global.GetStorage().AvailableTeams),
+			slackflow.WithInitialValues(user.Teams),
+			slackflow.WithOptional(true)),
+	}
+
+	if slices.Contains(user.Roles, "admin") {
+		blocks = append(blocks, slackflow.GetMultiSelectInputBlock(
+			GetBlockId(UserEditModal, RolesField),
+			GetActionId(UserEditModal, RolesField),
+			"Роли",
+			GetAvailableRolesOptionValues(global.GetStorage().AvailableRoles),
+			slackflow.WithInitialValues(user.Roles),
+			slackflow.WithOptional(true)))
+	}
+
 	return slack.ModalViewRequest{
 		CallbackID: GetCallbackId(UserEditModal),
 		Type:       slack.VTModal,
-		Title:      slackflow2.GetEmojiPlainTextObject(title),
-		Submit:     slackflow2.GetSimplePlainTextObject("Сохранить"),
-		Close:      slackflow2.GetSimplePlainTextObject("Отмена"),
+		Title:      slackflow.GetEmojiPlainTextObject(title),
+		Submit:     slackflow.GetSimplePlainTextObject("Сохранить"),
+		Close:      slackflow.GetSimplePlainTextObject("Отмена"),
 		Blocks: slack.Blocks{
-			BlockSet: []slack.Block{
-				slackflow2.GetUserInputBlock(
-					GetBlockId(UserEditModal, SlackField),
-					GetActionId(UserEditModal, SlackField),
-					"Slack",
-					slackflow2.WithInitialValue(user.SlackId),
-					slackflow2.WithPlaceholder("Пользователь slack (обязательно)")),
-				slackflow2.GetTextInputBlock(
-					GetBlockId(UserEditModal, EmailField),
-					GetActionId(UserEditModal, EmailField),
-					"Email",
-					slackflow2.WithInitialValue(user.Email),
-					slackflow2.WithPlaceholder("Рабочий email Котлеги (необязательно)"),
-					slackflow2.WithOptional(true)),
-				slackflow2.GetTextInputBlock(
-					GetBlockId(UserEditModal, GithubField),
-					GetActionId(UserEditModal, GithubField),
-					"Github",
-					slackflow2.WithInitialValue(user.GitHubLogin),
-					slackflow2.WithPlaceholder("Логин на Github (необязательно, но очень желательно)"),
-					slackflow2.WithOptional(true)),
-				slackflow2.GetMultiSelectInputBlock(
-					GetBlockId(UserEditModal, TeamsField),
-					GetActionId(UserEditModal, TeamsField),
-					"Команды",
-					GetAvailableTeamsOptionValues(global.GetStorage().AvailableTeams),
-					slackflow2.WithInitialValues(user.Teams),
-					slackflow2.WithOptional(true)),
-				slackflow2.GetMultiSelectInputBlock(
-					GetBlockId(UserEditModal, RolesField),
-					GetActionId(UserEditModal, RolesField),
-					"Роли",
-					GetAvailableRolesOptionValues(global.GetStorage().AvailableRoles),
-					slackflow2.WithInitialValues(user.Roles),
-					slackflow2.WithOptional(true)),
-			},
+			BlockSet: blocks,
 		},
 	}
 }

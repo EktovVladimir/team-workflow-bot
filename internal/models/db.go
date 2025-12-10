@@ -10,6 +10,13 @@ type User struct {
 	Teams       []string `bson:"teams,omitempty"`
 }
 
+func (u *User) ToRef() *UserRef {
+	return &UserRef{
+		SlackId:     u.SlackId,
+		GithubLogin: u.GitHubLogin,
+	}
+}
+
 type Role struct {
 	Id          string `bson:"_id,omitempty"`
 	Name        string `bson:"name"`

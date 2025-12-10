@@ -59,6 +59,22 @@ func (r *Repository) GetBySlackId(ctx context.Context, slackId string) (*models.
 	return &user, nil
 }
 
+func (r *Repository) GetByGithubLogin(ctx context.Context, login string) (*models.User, error) {
+	var user models.User
+	err := r.db.Collection("Users").
+		FindOne(ctx, bson.M{"github_login": login}).
+		Decode(&user)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, RecordNotFound
+		}
+
+		return nil, err
+	}
+
+	return &user, nil
+}
+
 func (r *Repository) CreateRole(ctx context.Context, item *models.Role) (string, error) {
 	res, err := r.db.Collection("Roles").InsertOne(ctx, item)
 	if err != nil {

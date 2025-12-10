@@ -12,7 +12,9 @@ import (
 	"team-workflow-bot/internal/handlers/codereview"
 	"team-workflow-bot/internal/handlers/configurator"
 	"team-workflow-bot/internal/integrations/githubflow"
+	"team-workflow-bot/internal/integrations/jiraflow"
 	"team-workflow-bot/internal/integrations/slackflow"
+	"team-workflow-bot/internal/services"
 
 	"github.com/andygrunwald/go-jira"
 	"github.com/google/go-github/v79/github"
@@ -69,18 +71,24 @@ func (a *App) Start(ctx context.Context) {
 	jiraClient, _ := jira.NewClient(tp.Client(), a.config.Jira.BaseUrl)
 
 	dependencies := &bag.DependenciesBag{
+		DB: bag.DatabaseBag{
+			Mongo:      mongoDb,
+			Repository: repository,
+		},
 		Client: bag.ClientBag{
 			Slack:  slackClient,
 			GitHub: githubClient,
 			Jira:   jiraClient,
 		},
-		DB: bag.DatabaseBag{
-			Mongo:      mongoDb,
-			Repository: repository,
+		Services: bag.InfrastructureServiceBag{
+			Github: githubflow.NewService(githubClient),
+			Jira:   jiraflow.NewService(jiraClient),
 		},
 	}
 
-	codeReviewHandler := codereview.NewHandler(dependencies)
+	retrieveService := services.NewRetriever(dependencies)
+
+	codeReviewHandler := codereview.NewHandler(dependencies, retrieveService)
 	configureHandler := configurator.NewSlackBotConfigurationHandler(dependencies)
 
 	slackListener := slackflow.NewListener(

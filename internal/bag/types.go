@@ -2,6 +2,8 @@ package bag
 
 import (
 	"team-workflow-bot/internal/db"
+	"team-workflow-bot/internal/integrations/githubflow"
+	"team-workflow-bot/internal/integrations/jiraflow"
 
 	"github.com/andygrunwald/go-jira"
 	"github.com/google/go-github/v79/github"
@@ -10,8 +12,9 @@ import (
 )
 
 type DependenciesBag struct {
-	Client ClientBag
-	DB     DatabaseBag
+	DB       DatabaseBag
+	Client   ClientBag
+	Services InfrastructureServiceBag
 }
 
 type ClientBag struct {
@@ -23,4 +26,9 @@ type ClientBag struct {
 type DatabaseBag struct {
 	Mongo      *mongo.Database
 	Repository *db.Repository
+}
+
+type InfrastructureServiceBag struct {
+	Github *githubflow.Service
+	Jira   *jiraflow.Service
 }

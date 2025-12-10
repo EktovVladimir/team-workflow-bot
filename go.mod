@@ -7,6 +7,7 @@ require (
 	github.com/cbrgm/githubevents/v2 v2.10.1
 	github.com/google/go-github/v79 v79.0.0
 	github.com/joho/godotenv v1.5.1
+	github.com/samber/lo v1.52.0
 	github.com/slack-go/slack v0.17.3
 	github.com/spf13/viper v1.21.0
 	go.mongodb.org/mongo-driver v1.17.6
