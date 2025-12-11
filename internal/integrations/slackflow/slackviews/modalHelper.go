@@ -1,20 +1,31 @@
 package slackviews
 
 import (
+	"strings"
 	"team-workflow-bot/internal/models"
 
 	"github.com/slack-go/slack"
 )
 
-func GetSelectedUser(vs *slack.ViewState, base string, field string) string {
+type ViewStateValues = map[string]map[string]slack.BlockAction
+
+func GetSelectedUser(vs ViewStateValues, base string, field string) string {
 	return GetViewStateValue(vs, base, field).SelectedUser
 }
 
-func GetInputText(vs *slack.ViewState, base string, field string) string {
+func GetSelectedUsers(vs ViewStateValues, base string, field string) []string {
+	return GetViewStateValue(vs, base, field).SelectedUsers
+}
+
+func GetInputText(vs ViewStateValues, base string, field string) string {
 	return GetViewStateValue(vs, base, field).Value
 }
 
-func GetMultiSelectValues(vs *slack.ViewState, base string, field string) []string {
+func GetMultilineInputText(vs ViewStateValues, base string, field string) []string {
+	return strings.Split(GetViewStateValue(vs, base, field).Value, "\n")
+}
+
+func GetMultiSelectValues(vs ViewStateValues, base string, field string) []string {
 	objects := GetViewStateValue(vs, base, field).SelectedOptions
 	return GetStringValuesFromObjects(objects...)
 }
@@ -47,8 +58,8 @@ func GetAvailableTeamsOptionValues(teams []models.Team) []SelectBlockOption {
 	return options
 }
 
-func GetViewStateValue(vs *slack.ViewState, base string, field string) slack.BlockAction {
-	return vs.Values[GetBlockId(base, field)][GetActionId(base, field)]
+func GetViewStateValue(vs ViewStateValues, base string, field string) slack.BlockAction {
+	return vs[GetBlockId(base, field)][GetActionId(base, field)]
 }
 
 func GetStringValuesFromObjects(objects ...slack.OptionBlockObject) []string {

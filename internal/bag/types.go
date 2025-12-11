@@ -4,6 +4,7 @@ import (
 	"team-workflow-bot/internal/db"
 	"team-workflow-bot/internal/integrations/githubflow"
 	"team-workflow-bot/internal/integrations/jiraflow"
+	"team-workflow-bot/internal/integrations/slackflow"
 
 	"github.com/andygrunwald/go-jira"
 	"github.com/google/go-github/v79/github"
@@ -31,4 +32,5 @@ type DatabaseBag struct {
 type InfrastructureServiceBag struct {
 	Github *githubflow.Service
 	Jira   *jiraflow.Service
+	Slack  *slackflow.Service
 }

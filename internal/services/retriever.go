@@ -32,7 +32,7 @@ func NewRetriever(bag *bag.DependenciesBag) *Retriever {
 	}
 }
 
-func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, request models.RequestRef) (*models.CodeReviewContext, error) {
+func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, request *models.RequestRef) (*models.CodeReviewContext, error) {
 
 	//TODO Пока что работаем через ПРы.
 	if len(request.PullRequests) == 0 /* && len(request.Issues) == 0 */ {
@@ -89,6 +89,45 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 			SlackId:     dbRequester.SlackId,
 		},
 		Reviewers:    reviewerRefs,
+		PullRequests: prInfos,
+		Issues:       issues,
+	}
+
+	return res, nil
+}
+
+func (r *Retriever) CollectCodeReviewContextFromSlackLite(ctx context.Context, request *models.RequestRef) (*models.CodeReviewContext, error) {
+
+	//TODO Пока что работаем через ПРы.
+	if len(request.PullRequests) == 0 /* && len(request.Issues) == 0 */ {
+		return nil, ErrNoPRsOrIssues
+	}
+
+	gh := r.bag.Client.GitHub
+
+	prInfos := make([]*models.PullRequestInfo, 0)
+	for _, prRef := range request.PullRequests {
+		ghPr, _, err := gh.PullRequests.Get(ctx, prRef.Owner, prRef.Repo, prRef.Number)
+		if err != nil {
+			return nil, err
+		}
+
+		prInfo := githubflow.MapPullRequestInfoFromResponse(ghPr)
+		prInfos = append(prInfos, prInfo)
+	}
+
+	issueKeys := lo.Map(request.Issues, func(issueRef *models.IssueRef, _ int) string {
+		return issueRef.Number
+	})
+
+	issues, err := r.bag.Services.Jira.GetIssueInfoList(ctx, issueKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &models.CodeReviewContext{
+		Requester:    request.Requester,
+		Reviewers:    request.Reviewers,
 		PullRequests: prInfos,
 		Issues:       issues,
 	}

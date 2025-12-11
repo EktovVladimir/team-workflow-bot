@@ -6,6 +6,7 @@ type listenerOptionConfig struct {
 	commandHandlers        []SlackSlashCommandHandler
 	directMessageHandlers  []SlackDirectMessageEventHandler
 	viewSubmissionHandlers []SLackViewSubmissionHandler
+	blockActionHandlers    []SlackBlockActionHandler
 }
 
 func WithCommandHandler(handlers ...SlackSlashCommandHandler) ListenerOption {
@@ -26,6 +27,12 @@ func WithDirectMessageHandler(handlers ...SlackDirectMessageEventHandler) Listen
 	}
 }
 
+func WithBlockActionHandler(handlers ...SlackBlockActionHandler) ListenerOption {
+	return func(cfg *listenerOptionConfig) {
+		cfg.blockActionHandlers = append(cfg.blockActionHandlers, handlers...)
+	}
+}
+
 func WithAnyHandler(handlers ...any) ListenerOption {
 	return func(cfg *listenerOptionConfig) {
 		for _, handler := range handlers {
@@ -37,6 +44,9 @@ func WithAnyHandler(handlers ...any) ListenerOption {
 			}
 			if h, ok := handler.(SLackViewSubmissionHandler); ok {
 				cfg.viewSubmissionHandlers = append(cfg.viewSubmissionHandlers, h)
+			}
+			if h, ok := handler.(SlackBlockActionHandler); ok {
+				cfg.blockActionHandlers = append(cfg.blockActionHandlers, h)
 			}
 		}
 	}

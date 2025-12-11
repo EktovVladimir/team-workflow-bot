@@ -15,19 +15,12 @@ const (
 	PullRequestRawListField = "pull_request_raw_list"
 	IssueRawListField       = "issue_raw_list"
 
+	CrPreviewEditCancel  = "cancel"
 	CrPreviewEditConfirm = "confirm"
 )
 
 func GetCrPreviewEditBlocks(cr *models.CodeReviewContext) []slack.Block {
-	validReviewers := make([]string, 0)
-	notFoundGhReviewers := make([]string, 0)
-	for _, reviewer := range cr.Reviewers {
-		if reviewer.SlackId != "" {
-			validReviewers = append(validReviewers, reviewer.SlackId)
-		} else if reviewer.GithubLogin != "" {
-			notFoundGhReviewers = append(notFoundGhReviewers, reviewer.GithubLogin)
-		}
-	}
+	validReviewers, notFoundGhReviewers := resolveReviewerNames(cr.Reviewers)
 
 	res := []slack.Block{
 		GetUserMultiSelectInputBlock(
@@ -37,12 +30,9 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext) []slack.Block {
 			WithInitialValues(validReviewers)),
 	}
 
-	if len(notFoundGhReviewers) > 0 {
-		text := fmt.Sprintf(
-			":warning: Некоторые ревьюверы не были найдены по их GitHub лоигнам: `%s`",
-			strings.Join(notFoundGhReviewers, ", "))
-
-		res = append(res, GetSimpleMarkdownContextBlock(text))
+	notFoundReviewersBlock := getNotValidReviewersContextBlock(notFoundGhReviewers)
+	if notFoundReviewersBlock != nil {
+		res = append(res, notFoundReviewersBlock)
 	}
 
 	res = append(res, slack.NewDividerBlock())
@@ -86,17 +76,39 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext) []slack.Block {
 	return res
 }
 
+func GetCrThreadBlocks(cr *models.CodeReviewContext) []slack.Block {
+	res := make([]slack.Block, 0)
+
+	res = append(res, GetReviewersBlocks(cr.Reviewers)...)
+	res = append(res, slack.NewDividerBlock())
+	res = append(res, GetPullRequestListBlocks(cr.PullRequests...)...)
+	res = append(res, slack.NewDividerBlock())
+	res = append(res, GetIssueListBlocks(cr.Issues...)...)
+
+	requesterSlackName := cr.Requester.SlackId
+	contextText := fmt.Sprintf("Создано через бота по запросу <@%s>", requesterSlackName)
+
+	res = append(res, GetSimpleMarkdownContextBlock(contextText))
+
+	return res
+}
+
 func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext) []slack.Block {
 	inputs := GetCrPreviewEditBlocks(cr)
 
+	cancelButton := slack.NewButtonBlockElement(
+		GetActionId(CrPreviewEdit, CrPreviewEditCancel),
+		GetActionId(CrPreviewEdit, CrPreviewEditCancel),
+		GetEmojiPlainTextObject("Отмена :x:"))
+
 	confirmButton := slack.NewButtonBlockElement(
 		GetActionId(CrPreviewEdit, CrPreviewEditConfirm),
-		//TODO надо ли в value что-то осмысленное?
 		GetActionId(CrPreviewEdit, CrPreviewEditConfirm),
-		GetSimplePlainTextObject("Создать тред"),
-	)
+		GetEmojiPlainTextObject("Создать тред :check_mark: "))
+
 	confirmActionBlock := slack.NewActionBlock(
 		GetBlockId(CrPreviewEdit, CrPreviewEditConfirm),
+		cancelButton,
 		confirmButton,
 	)
 
@@ -134,4 +146,54 @@ func GetIssueListBlocks(issues ...*models.IssueInfo) []slack.Block {
 	}
 
 	return res
+}
+
+func GetReviewersBlocks(reviewers []*models.UserRef) []slack.Block {
+	validNames, notFoundGithubLogins := resolveReviewerNames(reviewers)
+
+	reviewersText := strings.Join(lo.Map(validNames, func(s string, _ int) string {
+		return fmt.Sprintf("<@%s>", s)
+	}), ", ")
+
+	res := []slack.Block{
+		GetMarkdownTextSectionBlock(fmt.Sprintf("*#CR* %s", reviewersText)),
+	}
+
+	notValidBlock := getNotValidReviewersContextBlock(notFoundGithubLogins)
+	if notValidBlock != nil {
+		res = append(res, notValidBlock)
+	}
+
+	return res
+}
+
+func getNotValidReviewersContextBlock(notFoundGithubLogins []string) slack.Block {
+	if len(notFoundGithubLogins) == 0 {
+		return nil
+	}
+
+	text := fmt.Sprintf(
+		":warning: Некоторые ревьюверы не были найдены по их GitHub лоигнам: %s",
+		wrapCodeQuotesAndJoin(notFoundGithubLogins...))
+
+	return GetSimpleMarkdownContextBlock(text)
+}
+
+func resolveReviewerNames(reviewers []*models.UserRef) ([]string, []string) {
+	validReviewers := make([]string, 0)
+	notFoundGhReviewers := make([]string, 0)
+	for _, reviewer := range reviewers {
+		if reviewer.SlackId != "" {
+			validReviewers = append(validReviewers, reviewer.SlackId)
+		} else if reviewer.GithubLogin != "" {
+			notFoundGhReviewers = append(notFoundGhReviewers, reviewer.GithubLogin)
+		}
+	}
+	return validReviewers, notFoundGhReviewers
+}
+
+func wrapCodeQuotesAndJoin(items ...string) string {
+	return strings.Join(lo.Map(items, func(s string, _ int) string {
+		return fmt.Sprintf("`%s`", s)
+	}), ", ")
 }

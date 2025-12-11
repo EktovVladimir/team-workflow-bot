@@ -107,13 +107,21 @@ func (l *Listener) handleEventCommand(ctx context.Context, cmd slack.SlashComman
 }
 
 func (l *Listener) handleEventInteraction(ctx context.Context, callback slack.InteractionCallback, evt socketmode.Event) {
+	ackCallback := func(payload ...any) {
+		l.socketClient.Ack(*evt.Request, payload...)
+	}
+
 	switch callback.Type {
 	case slack.InteractionTypeViewSubmission:
 		for _, handler := range l.optionsConfig.viewSubmissionHandlers {
 			go func() {
-				handler.HandleSlackViewSubmission(ctx, callback, func(payload ...any) {
-					l.socketClient.Ack(*evt.Request, payload...)
-				})
+				handler.HandleSlackViewSubmission(ctx, callback, ackCallback)
+			}()
+		}
+	case slack.InteractionTypeBlockActions:
+		for _, handler := range l.optionsConfig.blockActionHandlers {
+			go func() {
+				handler.HandleSlackBlockAction(ctx, callback, ackCallback)
 			}()
 		}
 	default:

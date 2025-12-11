@@ -20,22 +20,22 @@ type interactivityData struct {
 	triggerId string
 }
 
-type SlackBotConfigurationHandler struct {
+type Handler struct {
 	bag *bag.DependenciesBag
 }
 
 func NewSlackBotConfigurationHandler(
-	bag *bag.DependenciesBag) *SlackBotConfigurationHandler {
-	return &SlackBotConfigurationHandler{
+	bag *bag.DependenciesBag) *Handler {
+	return &Handler{
 		bag: bag,
 	}
 }
 
-func (s SlackBotConfigurationHandler) HandleSlackSlashCommand(
+func (h *Handler) HandleSlackSlashCommand(
 	ctx context.Context,
 	cmd slack.SlashCommand,
 	ack slackflow.AckCallback) {
-	if cmd.Command != "/wfbot" {
+	if !h.isCommandApplicable(cmd) {
 		return
 	}
 
@@ -45,7 +45,24 @@ func (s SlackBotConfigurationHandler) HandleSlackSlashCommand(
 		return
 	}
 
-	//TODO проверка на роль
+	user, err := h.bag.DB.Repository.GetBySlackId(ctx, cmd.UserID)
+	if err != nil {
+		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(
+			ctx,
+			cmd.ChannelID,
+			cmd.UserID,
+			"Ошибка при получении данных о пользователе: "+err.Error())
+		return
+	}
+
+	if user == nil || !user.HasRole(models.RoleAdmin) {
+		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(
+			ctx,
+			cmd.ChannelID,
+			cmd.UserID,
+			"У вас нет прав для использования этой команды.")
+		return
+	}
 
 	data := interactivityData{
 		channelId: cmd.ChannelID,
@@ -53,30 +70,34 @@ func (s SlackBotConfigurationHandler) HandleSlackSlashCommand(
 		triggerId: cmd.TriggerID,
 	}
 
+	ack()
+
 	if len(args) >= 1 && args[0] == "user" {
-		s.configureUsers(ctx, data, args[1:])
+		h.configureUsers(ctx, data, args[1:], true)
 		return
 	}
 }
 
-func (s SlackBotConfigurationHandler) HandleSlackViewSubmission(
+func (h *Handler) HandleSlackViewSubmission(
 	ctx context.Context,
 	event slack.InteractionCallback,
 	ack slackflow.AckCallback) {
 
 	if event.View.CallbackID == slackviews.GetCallbackId(slackviews.UserEditModal) {
 
-		slackId := slackviews.GetSelectedUser(event.View.State, slackviews.UserEditModal, slackviews.SlackField)
-		email := slackviews.GetInputText(event.View.State, slackviews.UserEditModal, slackviews.EmailField)
-		githubName := slackviews.GetInputText(event.View.State, slackviews.UserEditModal, slackviews.GithubField)
-		roles := slackviews.GetMultiSelectValues(event.View.State, slackviews.UserEditModal, slackviews.RolesField)
-		teams := slackviews.GetMultiSelectValues(event.View.State, slackviews.UserEditModal, slackviews.TeamsField)
+		viewStateValues := event.View.State.Values
+
+		slackId := slackviews.GetSelectedUser(viewStateValues, slackviews.UserEditModal, slackviews.SlackField)
+		email := slackviews.GetInputText(viewStateValues, slackviews.UserEditModal, slackviews.EmailField)
+		githubName := slackviews.GetInputText(viewStateValues, slackviews.UserEditModal, slackviews.GithubField)
+		roles := slackviews.GetMultiSelectValues(viewStateValues, slackviews.UserEditModal, slackviews.RolesField)
+		teams := slackviews.GetMultiSelectValues(viewStateValues, slackviews.UserEditModal, slackviews.TeamsField)
 
 		//TODO валидация
 
 		ack()
 
-		user, err := s.bag.DB.Repository.GetBySlackId(ctx, slackId)
+		user, err := h.bag.DB.Repository.GetBySlackId(ctx, slackId)
 		if err != nil && !errors.Is(err, db.RecordNotFound) {
 			log.Printf("Error getting user by slack id %v: %v", slackId, err)
 			return
@@ -90,7 +111,7 @@ func (s SlackBotConfigurationHandler) HandleSlackViewSubmission(
 				Roles:       roles,
 				Teams:       teams,
 			}
-			_, err = s.bag.DB.Repository.CreateUser(ctx, user)
+			_, err = h.bag.DB.Repository.CreateUser(ctx, user)
 			if err != nil {
 				log.Printf("Error creating user with slack id %v: %v", slackId, err)
 				return
@@ -101,7 +122,7 @@ func (s SlackBotConfigurationHandler) HandleSlackViewSubmission(
 			user.Roles = roles
 			user.Teams = teams
 
-			err = s.bag.DB.Repository.UpdateUser(ctx, user)
+			err = h.bag.DB.Repository.UpdateUser(ctx, user)
 			if err != nil {
 				log.Printf("Error updating user with slack id %v: %v", slackId, err)
 				return
@@ -110,22 +131,31 @@ func (s SlackBotConfigurationHandler) HandleSlackViewSubmission(
 	}
 }
 
-func (s SlackBotConfigurationHandler) configureUsers(
+func (h *Handler) isCommandApplicable(cmd slack.SlashCommand) bool {
+	return cmd.Command == "/servit" && strings.HasPrefix(cmd.Text, "user")
+}
+
+func (h *Handler) configureUsers(
 	ctx context.Context,
 	data interactivityData,
-	args []string) {
+	args []string,
+	adminMode bool) {
 
 	if len(args) == 0 {
-		s.sendUserEditModal(ctx, data, &models.User{})
+		h.sendUserEditModal(ctx, data, &models.User{}, adminMode)
 		return
 	}
 
 	if len(args) == 1 {
 		userId, _ := slackflow.ParseEscapedLink(args[0])
 
-		user, err := s.bag.DB.Repository.GetBySlackId(ctx, userId)
+		user, err := h.bag.DB.Repository.GetBySlackId(ctx, userId)
 		if err != nil && !errors.Is(err, db.RecordNotFound) {
-			s.sendErrorMessage(ctx, data, "Ошибка при запросе БД: "+err.Error())
+			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(
+				ctx,
+				data.channelId,
+				data.userId,
+				"Ошибка при запросе БД: "+err.Error())
 			return
 		}
 
@@ -135,38 +165,26 @@ func (s SlackBotConfigurationHandler) configureUsers(
 			}
 		}
 
-		s.sendUserEditModal(ctx, data, user)
+		h.sendUserEditModal(ctx, data, user, adminMode)
 		return
 	}
 
 	//TODO парсим аргументы из текста и создаем пользователя
 }
 
-func (s SlackBotConfigurationHandler) sendUserEditModal(ctx context.Context, data interactivityData, user *models.User) {
+func (h *Handler) sendUserEditModal(ctx context.Context, data interactivityData, user *models.User, adminMode bool) {
 
-	slackviews.GetUserEditModal(user)
-	_, err := s.bag.Client.Slack.OpenViewContext(ctx, data.triggerId, slackviews.GetUserEditModal(user))
+	_, err := h.bag.Client.Slack.OpenViewContext(
+		ctx,
+		data.triggerId,
+		slackviews.GetUserEditModal(user, adminMode))
 
 	if err != nil {
-		s.sendErrorMessage(ctx, data, "Не удалось открыть модальное окно для редактирования пользователя. "+err.Error())
+		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(
+			ctx,
+			data.channelId,
+			data.userId,
+			"Не удалось открыть модальное окно для редактирования пользователя. "+err.Error())
 		return
 	}
-}
-
-// TODO вынести в хелпер
-func (s SlackBotConfigurationHandler) sendErrorMessage(
-	ctx context.Context,
-	data interactivityData,
-	text string) {
-	_, _, _, _ = s.bag.Client.Slack.SendMessageContext(
-		ctx,
-		data.channelId,
-		slack.MsgOptionPostEphemeral(data.userId),
-		slack.MsgOptionAttachments(
-			slack.Attachment{
-				Color: "danger",
-				Text:  text,
-			},
-		),
-	)
 }

@@ -83,6 +83,7 @@ func (a *App) Start(ctx context.Context) {
 		Services: bag.InfrastructureServiceBag{
 			Github: githubflow.NewService(githubClient),
 			Jira:   jiraflow.NewService(jiraClient),
+			Slack:  slackflow.NewService(slackClient),
 		},
 	}
 
@@ -94,7 +95,7 @@ func (a *App) Start(ctx context.Context) {
 	slackListener := slackflow.NewListener(
 		slackClient,
 		a.config,
-		slackflow.WithCommandHandler(codeReviewHandler),
+		slackflow.WithAnyHandler(codeReviewHandler),
 		slackflow.WithCommandHandler(configureHandler),
 		slackflow.WithViewSubmissionHandler(configureHandler))
 

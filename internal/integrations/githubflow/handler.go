@@ -47,8 +47,6 @@ func (l *Handler) handlePullRequestEvent(
 	ctx context.Context,
 	deliveryID string,
 	eventName string, event *github.PullRequestEvent) error {
-	log.Printf("Handling GitHub PR event %v: %s", eventName, event.GetAction())
-
 	for _, h := range l.optionsConfig.prHandlers {
 		h.HandlePullRequestEvent(ctx, event)
 	}
@@ -61,8 +59,6 @@ func (l *Handler) handlePullRequestReviewEvent(
 	deliveryID string,
 	eventName string,
 	event *github.PullRequestReviewEvent) error {
-	log.Printf("Handling GitHub PR review event %v: %s", eventName, event.GetAction())
-
 	for _, h := range l.optionsConfig.prReviewHandlers {
 		h.HandlePullRequestReviewEvent(ctx, event)
 	}
@@ -75,8 +71,6 @@ func (l *Handler) handleWorkflowRunEvent(
 	deliveryID string,
 	eventName string,
 	event *github.WorkflowRunEvent) error {
-	log.Printf("Handling GitHub WF run event %v: %s", eventName, event.GetAction())
-
 	for _, h := range l.optionsConfig.wfRunHandler {
 		h.HandleWorkflowRunEvent(ctx, event)
 	}

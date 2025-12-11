@@ -1,7 +1,6 @@
 package slackviews
 
 import (
-	"slices"
 	"team-workflow-bot/internal/global"
 	"team-workflow-bot/internal/models"
 
@@ -17,7 +16,7 @@ const (
 	TeamsField    = "teams"
 )
 
-func GetUserEditModal(user *models.User) slack.ModalViewRequest {
+func GetUserEditModal(user *models.User, adminMode bool) slack.ModalViewRequest {
 	title := "Добавить"
 	if user.Id != "" {
 		title = "Редактировать"
@@ -53,7 +52,7 @@ func GetUserEditModal(user *models.User) slack.ModalViewRequest {
 			WithOptional(true)),
 	}
 
-	if slices.Contains(user.Roles, "admin") {
+	if adminMode {
 		blocks = append(blocks, GetMultiSelectInputBlock(
 			GetBlockId(UserEditModal, RolesField),
 			GetActionId(UserEditModal, RolesField),

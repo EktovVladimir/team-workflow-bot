@@ -34,10 +34,14 @@ func (r *Repository) CreateUser(ctx context.Context, item *models.User) (string,
 }
 
 func (r *Repository) UpdateUser(ctx context.Context, item *models.User) error {
+
+	updUser := *item
+	updUser.Id = ""
+
 	_, err := r.db.Collection("Users").UpdateOne(
 		ctx,
 		bson.M{"slack_id": item.SlackId},
-		bson.M{"$set": item},
+		bson.M{"$set": &updUser},
 	)
 
 	return err

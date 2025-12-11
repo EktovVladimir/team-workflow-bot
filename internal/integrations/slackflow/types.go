@@ -20,3 +20,7 @@ type SlackDirectMessageEventHandler interface {
 type SLackViewSubmissionHandler interface {
 	HandleSlackViewSubmission(ctx context.Context, event slack.InteractionCallback, ack AckCallback)
 }
+
+type SlackBlockActionHandler interface {
+	HandleSlackBlockAction(ctx context.Context, event slack.InteractionCallback, ack AckCallback)
+}

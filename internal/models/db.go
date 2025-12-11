@@ -1,5 +1,11 @@
 package models
 
+const (
+	RoleAdmin     = "admin"
+	RoleModerator = "moderator"
+	RoleUser      = "user"
+)
+
 type User struct {
 	Id          string   `bson:"_id,omitempty"`
 	Email       string   `bson:"email"`
@@ -15,6 +21,15 @@ func (u *User) ToRef() *UserRef {
 		SlackId:     u.SlackId,
 		GithubLogin: u.GitHubLogin,
 	}
+}
+
+func (u *User) HasRole(roleName string) bool {
+	for _, r := range u.Roles {
+		if r == roleName {
+			return true
+		}
+	}
+	return false
 }
 
 type Role struct {
