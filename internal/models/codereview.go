@@ -1,10 +1,10 @@
 package models
 
 type RequestRef struct {
-	Requester    UserRef
-	Reviewers    []UserRef
-	PullRequests []PullRequestRef
-	Issues       []IssueRef
+	Requester    *UserRef
+	Reviewers    []*UserRef
+	PullRequests []*PullRequestRef
+	Issues       []*IssueRef
 }
 
 type CodeReviewContext struct {

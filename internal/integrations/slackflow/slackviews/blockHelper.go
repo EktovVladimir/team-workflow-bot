@@ -1,4 +1,4 @@
-package salckviews
+package slackviews
 
 import (
 	"slices"
@@ -46,7 +46,7 @@ func GetUserMultiSelectInputBlock(
 		hintElement = GetSimplePlainTextObject(cfg.hint)
 	}
 
-	selectElement := slack.NewOptionsMultiSelectBlockElement(slack.OptTypeUser, labelElement, actionId)
+	selectElement := slack.NewOptionsMultiSelectBlockElement(slack.MultiOptTypeUser, labelElement, actionId)
 
 	if len(cfg.initialValues) > 0 {
 		selectElement.InitialUsers = cfg.initialValues
@@ -78,6 +78,8 @@ func GetTextInputBlock(blockId string, actionId string, label string, options ..
 	if cfg.initialValue != "" {
 		textInputElement.InitialValue = cfg.initialValue
 	}
+
+	textInputElement.Multiline = cfg.multiline
 
 	block := slack.NewInputBlock(
 		blockId,
@@ -161,20 +163,27 @@ func GetOptionBlockObjects(selectOptions []SelectBlockOption, options ...BlockHe
 	return selectOptionElements
 }
 
-func filterOptionBlockObjectBySelected(objects []*slack.OptionBlockObject, selectValues []string) []*slack.OptionBlockObject {
-	var selectOptionElements []*slack.OptionBlockObject
-	for _, o := range objects {
-		if slices.Contains(selectValues, o.Value) {
-			selectOptionElements = append(selectOptionElements, o)
-		}
-	}
-	return selectOptionElements
-}
-
 func GetPlainTextObject(text string, options ...BlockHelperOption) *slack.TextBlockObject {
 	cfg := applyBlockHelperOptions(options...)
 
 	return slack.NewTextBlockObject(slack.PlainTextType, text, cfg.emoji, false)
+}
+
+func GetMarkdownTextObject(text string, options ...BlockHelperOption) *slack.TextBlockObject {
+	cfg := applyBlockHelperOptions(options...)
+
+	return slack.NewTextBlockObject(slack.MarkdownType, text, cfg.emoji, false)
+}
+
+func GetMarkdownTextSectionBlock(text string, options ...BlockHelperOption) *slack.SectionBlock {
+	return slack.NewSectionBlock(GetMarkdownTextObject(text, options...), nil, nil)
+}
+
+func GetSimpleMarkdownContextBlock(text string, options ...BlockHelperOption) *slack.ContextBlock {
+	cfg := applyBlockHelperOptions(options...)
+
+	return slack.NewContextBlock("",
+		slack.NewTextBlockObject(slack.MarkdownType, text, cfg.emoji, false))
 }
 
 func GetSimplePlainTextObject(text string) *slack.TextBlockObject {
@@ -183,4 +192,14 @@ func GetSimplePlainTextObject(text string) *slack.TextBlockObject {
 
 func GetEmojiPlainTextObject(text string) *slack.TextBlockObject {
 	return slack.NewTextBlockObject(slack.PlainTextType, text, true, false)
+}
+
+func filterOptionBlockObjectBySelected(objects []*slack.OptionBlockObject, selectValues []string) []*slack.OptionBlockObject {
+	var selectOptionElements []*slack.OptionBlockObject
+	for _, o := range objects {
+		if slices.Contains(selectValues, o.Value) {
+			selectOptionElements = append(selectOptionElements, o)
+		}
+	}
+	return selectOptionElements
 }

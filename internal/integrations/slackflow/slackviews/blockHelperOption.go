@@ -1,4 +1,4 @@
-package salckviews
+package slackviews
 
 type BlockHelperOption func(cfg *blockHelperOptionConfig)
 
@@ -9,6 +9,7 @@ type blockHelperOptionConfig struct {
 	initialValue  string
 	initialValues []string
 	placeholder   string
+	multiline     bool
 }
 
 func WithHint(hint string) BlockHelperOption {
@@ -47,8 +48,16 @@ func WithEmoji(emoji bool) BlockHelperOption {
 	}
 }
 
+func WithMultiline(multiline bool) BlockHelperOption {
+	return func(cfg *blockHelperOptionConfig) {
+		cfg.multiline = multiline
+	}
+}
+
 func applyBlockHelperOptions(opts ...BlockHelperOption) *blockHelperOptionConfig {
-	cfg := &blockHelperOptionConfig{}
+	cfg := &blockHelperOptionConfig{
+		emoji: true,
+	}
 	for _, o := range opts {
 		if o != nil {
 			o(cfg)

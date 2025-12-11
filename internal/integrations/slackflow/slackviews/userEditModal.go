@@ -1,4 +1,4 @@
-package salckviews
+package slackviews
 
 import (
 	"slices"

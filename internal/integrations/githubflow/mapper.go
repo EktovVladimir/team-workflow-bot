@@ -17,6 +17,11 @@ func MapPullRequestInfoFromResponse(ghPr *github.PullRequest) *models.PullReques
 	})
 
 	return &models.PullRequestInfo{
+		Ref: &models.PullRequestRef{
+			Owner:  ghPr.Base.Repo.Owner.GetLogin(),
+			Repo:   ghPr.Base.Repo.GetName(),
+			Number: ghPr.GetNumber(),
+		},
 		HeadBranch: ghPr.Head.GetRef(),
 		BaseBranch: ghPr.Base.GetRef(),
 		Title:      ghPr.GetTitle(),

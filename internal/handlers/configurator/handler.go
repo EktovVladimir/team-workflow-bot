@@ -8,7 +8,7 @@ import (
 	"team-workflow-bot/internal/bag"
 	"team-workflow-bot/internal/db"
 	"team-workflow-bot/internal/integrations/slackflow"
-	"team-workflow-bot/internal/integrations/slackflow/salckviews"
+	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
 
 	"github.com/slack-go/slack"
@@ -64,13 +64,13 @@ func (s SlackBotConfigurationHandler) HandleSlackViewSubmission(
 	event slack.InteractionCallback,
 	ack slackflow.AckCallback) {
 
-	if event.View.CallbackID == salckviews.GetCallbackId(salckviews.UserEditModal) {
+	if event.View.CallbackID == slackviews.GetCallbackId(slackviews.UserEditModal) {
 
-		slackId := salckviews.GetSelectedUser(event.View.State, salckviews.UserEditModal, salckviews.SlackField)
-		email := salckviews.GetInputText(event.View.State, salckviews.UserEditModal, salckviews.EmailField)
-		githubName := salckviews.GetInputText(event.View.State, salckviews.UserEditModal, salckviews.GithubField)
-		roles := salckviews.GetMultiSelectValues(event.View.State, salckviews.UserEditModal, salckviews.RolesField)
-		teams := salckviews.GetMultiSelectValues(event.View.State, salckviews.UserEditModal, salckviews.TeamsField)
+		slackId := slackviews.GetSelectedUser(event.View.State, slackviews.UserEditModal, slackviews.SlackField)
+		email := slackviews.GetInputText(event.View.State, slackviews.UserEditModal, slackviews.EmailField)
+		githubName := slackviews.GetInputText(event.View.State, slackviews.UserEditModal, slackviews.GithubField)
+		roles := slackviews.GetMultiSelectValues(event.View.State, slackviews.UserEditModal, slackviews.RolesField)
+		teams := slackviews.GetMultiSelectValues(event.View.State, slackviews.UserEditModal, slackviews.TeamsField)
 
 		//TODO валидация
 
@@ -144,8 +144,8 @@ func (s SlackBotConfigurationHandler) configureUsers(
 
 func (s SlackBotConfigurationHandler) sendUserEditModal(ctx context.Context, data interactivityData, user *models.User) {
 
-	salckviews.GetUserEditModal(user)
-	_, err := s.bag.Client.Slack.OpenViewContext(ctx, data.triggerId, salckviews.GetUserEditModal(user))
+	slackviews.GetUserEditModal(user)
+	_, err := s.bag.Client.Slack.OpenViewContext(ctx, data.triggerId, slackviews.GetUserEditModal(user))
 
 	if err != nil {
 		s.sendErrorMessage(ctx, data, "Не удалось открыть модальное окно для редактирования пользователя. "+err.Error())

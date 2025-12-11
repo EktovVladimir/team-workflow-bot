@@ -41,7 +41,7 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 
 	gh := r.bag.Client.GitHub
 
-	dbRequester, _ := r.GetUserBySlackIdSafe(ctx, &request.Requester)
+	dbRequester, _ := r.GetUserBySlackIdSafe(ctx, request.Requester)
 
 	prInfos := make([]*models.PullRequestInfo, 0)
 	for _, prRef := range request.PullRequests {
@@ -60,7 +60,7 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 	})
 
 	//Ревьюверы из запроса
-	reviewerGhLogins = append(reviewerGhLogins, lo.Map(request.Reviewers, func(r models.UserRef, _ int) string {
+	reviewerGhLogins = append(reviewerGhLogins, lo.Map(request.Reviewers, func(r *models.UserRef, _ int) string {
 		return r.GithubLogin
 	})...)
 
@@ -71,17 +71,12 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 		return u.ToRef()
 	})
 
-	//TODO конфиг или БД
-	issueKeyPattern := `(\s|/|^)(?P<issue>[A-Za-z]+-[0-9]+)(\s|[-_]|$)`
-
 	headBrunchNames := lo.Map(prInfos, func(pr *models.PullRequestInfo, _ int) string {
 		return pr.HeadBranch
 	})
 
-	mainIssueKeys := getUniqKeysFromMessages(issueKeyPattern, headBrunchNames...)
-	issueKeys := r.GetIssueKeysFromCommitMessages(ctx, issueKeyPattern, request.PullRequests...)
-
-	lo.Union(mainIssueKeys, issueKeys)
+	mainIssueKeys := getUniqKeysFromMessages(headBrunchNames...)
+	issueKeys := r.GetIssueKeysFromCommitMessages(ctx, request.PullRequests...)
 
 	issues, err := r.bag.Services.Jira.GetIssueInfoList(ctx, lo.Union(mainIssueKeys, issueKeys))
 	if err != nil {
@@ -237,10 +232,10 @@ func (r *Retriever) GetGithubUserBySlackId(ctx context.Context, slackId string) 
 	return ghUsers.Users[0], nil
 }
 
-func (r *Retriever) GetIssueKeysFromCommitMessages(ctx context.Context, pattern string, prRefs ...models.PullRequestRef) []string {
+func (r *Retriever) GetIssueKeysFromCommitMessages(ctx context.Context, prRefs ...*models.PullRequestRef) []string {
 	messages := make([]string, 0)
 	for _, prRef := range prRefs {
-		ghCommits, err := r.bag.Services.Github.GetAllCommits(ctx, &prRef)
+		ghCommits, err := r.bag.Services.Github.GetAllCommits(ctx, prRef)
 		if err != nil {
 			log.Println("Ignoring error while retrieving commits for PR:", err)
 			continue
@@ -251,27 +246,25 @@ func (r *Retriever) GetIssueKeysFromCommitMessages(ctx context.Context, pattern 
 		})...)
 	}
 
-	return getUniqKeysFromMessages(pattern, messages...)
+	return getUniqKeysFromMessages(messages...)
 }
 
 // TODO в утилиты
-func getUniqKeysFromMessages(pattern string, messages ...string) []string {
-	if !strings.HasPrefix(pattern, "(?i)") {
-		pattern = "(?i)" + pattern
-	}
-
-	rxp, _ := regexp.Compile(pattern)
+func getUniqKeysFromMessages(messages ...string) []string {
+	rxp := regexp.MustCompile(`(?i)(?:\s|/|^)(?P<issue>[A-Za-z]+-[0-9]+)(?:\s|[-_]|$)`)
 
 	keys := lo.FilterMap(messages, func(s string, i int) (string, bool) {
-		match := rxp.FindString(s)
-		if match == "" {
+		m := rxp.FindStringSubmatch(s)
+		if len(m) != 2 {
 			return "", false
 		}
 
-		match = strings.Trim(match, " \n\t ")
-		match = strings.ToUpper(match)
+		key := m[1]
 
-		return match, true
+		key = strings.Trim(key, " \n\t ")
+		key = strings.ToUpper(key)
+
+		return key, true
 	})
 
 	return lo.Uniq(keys)

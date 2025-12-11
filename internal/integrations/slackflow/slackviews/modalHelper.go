@@ -1,4 +1,4 @@
-package salckviews
+package slackviews
 
 import (
 	"team-workflow-bot/internal/models"
