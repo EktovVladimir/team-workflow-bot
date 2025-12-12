@@ -13,9 +13,9 @@ import (
 )
 
 type Listener struct {
-	config        *config.Config
-	socketClient  *socketmode.Client
-	optionsConfig *listenerOptionConfig
+	config       *config.Config
+	socketClient *socketmode.Client
+	cfg          *listenerOptionConfig
 
 	SlackClient *slack.Client
 }
@@ -30,100 +30,78 @@ func NewListener(slackClient *slack.Client, config *config.Config, options ...Li
 	optionsConfig := newListenerOptionConfig(options...)
 
 	return &Listener{
-		SlackClient:   slackClient,
-		config:        config,
-		socketClient:  socketClient,
-		optionsConfig: optionsConfig,
+		SlackClient:  slackClient,
+		config:       config,
+		socketClient: socketClient,
+		cfg:          optionsConfig,
 	}
 }
 
 func (l *Listener) Run(ctx context.Context) error {
-	go func() {
-		for evt := range l.socketClient.Events {
-			l.handleEvent(ctx, evt)
-		}
-	}()
+	socketModeHandler := socketmode.NewSocketmodeHandler(l.socketClient)
 
-	err := l.socketClient.RunContext(ctx)
-	if err != nil {
-		return err
+	for _, handler := range l.cfg.commandHandlers {
+		socketModeHandler.Handle(socketmode.EventTypeSlashCommand, l.slashCommandMiddleware(ctx, handler))
 	}
 
-	return nil
+	for _, handler := range l.cfg.blockActionHandlers {
+		socketModeHandler.HandleInteraction(slack.InteractionTypeBlockActions, l.blockActionEventMiddleware(ctx, handler))
+	}
+
+	for _, handler := range l.cfg.viewSubmissionHandlers {
+		socketModeHandler.HandleInteraction(slack.InteractionTypeViewSubmission, l.viewSubmissionEventMiddleware(ctx, handler))
+	}
+
+	for _, handler := range l.cfg.directMessageHandlers {
+		socketModeHandler.HandleEvents(slackevents.Message, l.directMessageEventMiddleware(ctx, handler))
+	}
+
+	return socketModeHandler.RunEventLoopContext(ctx)
 }
 
-func (l *Listener) handleEvent(ctx context.Context, evt socketmode.Event) {
-	switch evt.Type {
-	case socketmode.EventTypeEventsAPI:
-		eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
-		if !ok {
-			return
-		}
-		// Тут можем сразу ack-нуть, так как не требуется валидация.
-		l.socketClient.Ack(*evt.Request)
-		l.handleEventApi(ctx, eventsAPIEvent)
-	case socketmode.EventTypeSlashCommand:
+func (l *Listener) slashCommandMiddleware(ctx context.Context, handler SlackSlashCommandHandler) socketmode.SocketmodeHandlerFunc {
+	return func(evt *socketmode.Event, client *socketmode.Client) {
 		cmd, ok := evt.Data.(slack.SlashCommand)
 		if !ok {
 			return
 		}
-		l.handleEventCommand(ctx, cmd, evt)
-	case socketmode.EventTypeInteractive:
+		handler.HandleSlackSlashCommand(ctx, evt, client, cmd)
+	}
+}
+
+func (l *Listener) blockActionEventMiddleware(ctx context.Context, handler SlackBlockActionHandler) socketmode.SocketmodeHandlerFunc {
+	return func(evt *socketmode.Event, client *socketmode.Client) {
 		callback, ok := evt.Data.(slack.InteractionCallback)
 		if !ok {
 			return
 		}
-		l.handleEventInteraction(ctx, callback, evt)
-	default:
+		handler.HandleSlackBlockAction(ctx, evt, client, callback)
 	}
 }
 
-func (l *Listener) handleEventApi(ctx context.Context, event slackevents.EventsAPIEvent) {
-	switch event.Type {
-	case slackevents.CallbackEvent:
-		innerEvent := event.InnerEvent
-		switch ev := innerEvent.Data.(type) {
-		case *slackevents.MessageEvent:
-			if ev.ChannelType == "im" {
-				for _, handler := range l.optionsConfig.directMessageHandlers {
-					go func() {
-						handler.HandleSlackDirectMessageEvent(ctx, ev)
-					}()
-				}
-			}
-		default:
+func (l *Listener) viewSubmissionEventMiddleware(ctx context.Context, handler SLackViewSubmissionHandler) socketmode.SocketmodeHandlerFunc {
+	return func(evt *socketmode.Event, client *socketmode.Client) {
+		callback, ok := evt.Data.(slack.InteractionCallback)
+		if !ok {
+			return
 		}
+		handler.HandleSlackViewSubmission(ctx, evt, client, callback)
 	}
 }
 
-func (l *Listener) handleEventCommand(ctx context.Context, cmd slack.SlashCommand, evt socketmode.Event) {
-	for _, handler := range l.optionsConfig.commandHandlers {
-		go func() {
-			handler.HandleSlackSlashCommand(ctx, cmd, func(payload ...any) {
-				l.socketClient.Ack(*evt.Request, payload...)
-			})
-		}()
-	}
-}
-
-func (l *Listener) handleEventInteraction(ctx context.Context, callback slack.InteractionCallback, evt socketmode.Event) {
-	ackCallback := func(payload ...any) {
-		l.socketClient.Ack(*evt.Request, payload...)
-	}
-
-	switch callback.Type {
-	case slack.InteractionTypeViewSubmission:
-		for _, handler := range l.optionsConfig.viewSubmissionHandlers {
-			go func() {
-				handler.HandleSlackViewSubmission(ctx, callback, ackCallback)
-			}()
+func (l *Listener) directMessageEventMiddleware(ctx context.Context, handler SlackDirectMessageEventHandler) socketmode.SocketmodeHandlerFunc {
+	return func(evt *socketmode.Event, client *socketmode.Client) {
+		eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
+		if !ok {
+			return
 		}
-	case slack.InteractionTypeBlockActions:
-		for _, handler := range l.optionsConfig.blockActionHandlers {
-			go func() {
-				handler.HandleSlackBlockAction(ctx, callback, ackCallback)
-			}()
+		innerEvent := eventsAPIEvent.InnerEvent
+		messageEvent, ok := innerEvent.Data.(*slackevents.MessageEvent)
+		if !ok {
+			return
 		}
-	default:
+		if messageEvent.ChannelType == "im" {
+			handler.HandleSlackDirectMessageEvent(ctx, evt, client, messageEvent)
+		}
 	}
 }

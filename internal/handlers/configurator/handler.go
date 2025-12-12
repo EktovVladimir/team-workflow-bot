@@ -12,6 +12,7 @@ import (
 	"team-workflow-bot/internal/models"
 
 	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/socketmode"
 )
 
 type interactivityData struct {
@@ -33,8 +34,9 @@ func NewSlackBotConfigurationHandler(
 
 func (h *Handler) HandleSlackSlashCommand(
 	ctx context.Context,
-	cmd slack.SlashCommand,
-	ack slackflow.AckCallback) {
+	evt *socketmode.Event,
+	client *socketmode.Client,
+	cmd slack.SlashCommand) {
 	if !h.isCommandApplicable(cmd) {
 		return
 	}
@@ -70,7 +72,7 @@ func (h *Handler) HandleSlackSlashCommand(
 		triggerId: cmd.TriggerID,
 	}
 
-	ack()
+	client.Ack(*evt.Request)
 
 	if len(args) >= 1 && args[0] == "user" {
 		h.configureUsers(ctx, data, args[1:], true)
@@ -80,12 +82,13 @@ func (h *Handler) HandleSlackSlashCommand(
 
 func (h *Handler) HandleSlackViewSubmission(
 	ctx context.Context,
-	event slack.InteractionCallback,
-	ack slackflow.AckCallback) {
+	evt *socketmode.Event,
+	client *socketmode.Client,
+	callback slack.InteractionCallback) {
 
-	if event.View.CallbackID == slackviews.GetCallbackId(slackviews.UserEditModal) {
+	if callback.View.CallbackID == slackviews.GetCallbackId(slackviews.UserEditModal) {
 
-		viewStateValues := event.View.State.Values
+		viewStateValues := callback.View.State.Values
 
 		slackId := slackviews.GetSelectedUser(viewStateValues, slackviews.UserEditModal, slackviews.SlackField)
 		email := slackviews.GetInputText(viewStateValues, slackviews.UserEditModal, slackviews.EmailField)
@@ -95,7 +98,7 @@ func (h *Handler) HandleSlackViewSubmission(
 
 		//TODO валидация
 
-		ack()
+		client.Ack(*evt.Request)
 
 		user, err := h.bag.DB.Repository.GetBySlackId(ctx, slackId)
 		if err != nil && !errors.Is(err, db.RecordNotFound) {

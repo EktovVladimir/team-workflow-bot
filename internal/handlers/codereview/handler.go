@@ -6,13 +6,13 @@ import (
 	"log"
 	"strings"
 	"team-workflow-bot/internal/bag"
-	"team-workflow-bot/internal/integrations/slackflow"
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
 
 	"github.com/google/go-github/v79/github"
 	"github.com/samber/lo"
 	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/socketmode"
 )
 
 const (
@@ -46,20 +46,21 @@ func (h *Handler) HandlePullRequestEvent(ctx context.Context, event *github.Pull
 func (h *Handler) HandlePullRequestReviewEvent(ctx context.Context, event *github.PullRequestReviewEvent) {
 }
 
-func (h *Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCommand, ack slackflow.AckCallback) {
+func (h *Handler) HandleSlackSlashCommand(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, cmd slack.SlashCommand) {
 	if !h.isCommandApplicable(cmd) {
 		return
 	}
 
-	// Приняли команду, команда относится к этому обработчику. Подтверждаем
-	ack()
+	client.Ack(*evt.Request)
 
 	args := strings.Fields(cmd.Text)
 
 	if len(args) == 0 {
 		//TODO модал или эфемер с инпутами
+
 		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
 			"Временно не поддерживается. Используй `/servit cr <pr_url1> ... <pr_urlN>`")
+
 		return
 	}
 
@@ -68,10 +69,7 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCo
 	})
 
 	if len(prRefs) == 0 {
-		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(
-			ctx,
-			cmd.ChannelID,
-			cmd.UserID,
+		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
 			"Не удалось распознать ни одного валидного URL ПРа.")
 		return
 	}
@@ -92,9 +90,9 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCo
 		return
 	}
 
-	//TODO пытаемся сохранить в БД юзеров
+	//TODO пытаемся сохранить в БД юзеров?
 
-	_, _, _, err = h.bag.Client.Slack.SendMessageContext(
+	_, _, _, err = client.SendMessageContext(
 		ctx,
 		cmd.ChannelID,
 		//TODO текст уведомления
@@ -103,26 +101,26 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCo
 		slack.MsgOptionBlocks(slackviews.GetCrPreviewEditAndConfirmBlocks(crContext)...))
 }
 
-func (h *Handler) HandleSlackBlockAction(ctx context.Context, event slack.InteractionCallback, ack slackflow.AckCallback) {
+func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, callback slack.InteractionCallback) {
 	sl := h.bag.Client.Slack
 
-	if len(event.ActionCallback.BlockActions) == 0 {
+	if len(callback.ActionCallback.BlockActions) == 0 {
 		return
 	}
 
-	actionId := event.ActionCallback.BlockActions[0].ActionID
-	responseUrl := event.ResponseURL
-	channelId := event.Channel.ID
-	userId := event.User.ID
+	actionId := callback.ActionCallback.BlockActions[0].ActionID
+	responseUrl := callback.ResponseURL
+	channelId := callback.Channel.ID
+	userId := callback.User.ID
 
 	if actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditConfirm) {
-		ack()
+		client.Ack(*evt.Request)
 
-		request := getRequestRefFromPreviewEdit(event.BlockActionState.Values, userId)
+		request := getRequestRefFromPreviewEdit(callback.BlockActionState.Values, userId)
 
 		crContext, err := h.retriever.CollectCodeReviewContextFromSlackLite(ctx, request)
 		if err != nil {
-			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, event.User.ID,
+			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, callback.User.ID,
 				fmt.Sprintf("Ошибка при сборе контекста код-ревью: %s", err.Error()))
 			return
 		}
@@ -150,7 +148,7 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, event slack.Intera
 
 		_, _, err = sl.PostMessage(channelId, options...)
 		if err != nil {
-			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, event.User.ID,
+			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, callback.User.ID,
 				fmt.Sprintf("Ошибка при создании треда код-ревью: %s", err.Error()))
 			return
 		}
@@ -168,9 +166,9 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, event slack.Intera
 
 	if actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.IssueRawListField) ||
 		actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField) {
-		ack()
+		client.Ack(*evt.Request)
 
-		request := getRequestRefFromPreviewEdit(event.BlockActionState.Values, userId)
+		request := getRequestRefFromPreviewEdit(callback.BlockActionState.Values, userId)
 
 		crContext, err := h.retriever.CollectCodeReviewContextFromSlackLite(ctx, request)
 		if err != nil {
