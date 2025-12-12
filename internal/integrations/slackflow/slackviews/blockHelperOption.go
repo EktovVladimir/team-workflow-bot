@@ -3,13 +3,14 @@ package slackviews
 type BlockHelperOption func(cfg *blockHelperOptionConfig)
 
 type blockHelperOptionConfig struct {
-	hint          string
-	optional      bool
-	emoji         bool
-	initialValue  string
-	initialValues []string
-	placeholder   string
-	multiline     bool
+	hint           string
+	optional       bool
+	emoji          bool
+	initialValue   string
+	initialValues  []string
+	placeholder    string
+	multiline      bool
+	dispatchAction bool
 }
 
 func WithHint(hint string) BlockHelperOption {
@@ -51,6 +52,12 @@ func WithEmoji(emoji bool) BlockHelperOption {
 func WithMultiline(multiline bool) BlockHelperOption {
 	return func(cfg *blockHelperOptionConfig) {
 		cfg.multiline = multiline
+	}
+}
+
+func WithDispatchAction(dispatchAction bool) BlockHelperOption {
+	return func(cfg *blockHelperOptionConfig) {
+		cfg.dispatchAction = dispatchAction
 	}
 }
 

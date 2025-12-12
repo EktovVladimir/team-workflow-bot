@@ -88,6 +88,7 @@ func GetTextInputBlock(blockId string, actionId string, label string, options ..
 		textInputElement)
 
 	block.Optional = cfg.optional
+	block.DispatchAction = cfg.dispatchAction
 
 	return block
 }

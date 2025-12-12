@@ -5,6 +5,7 @@ import (
 	"team-workflow-bot/internal/models"
 
 	"github.com/andygrunwald/go-jira"
+	"github.com/samber/lo"
 )
 
 type Service struct {
@@ -35,6 +36,7 @@ func (s *Service) GetIssueInfo(ctx context.Context, issueKey string) (*models.Is
 
 func (s *Service) GetIssueInfoList(ctx context.Context, issueKeys []string) ([]*models.IssueInfo, error) {
 	res := make([]*models.IssueInfo, 0)
+	issueKeys = lo.Uniq(issueKeys)
 	for _, key := range issueKeys {
 		issue, err := s.GetIssueInfo(ctx, key)
 		if err != nil {
@@ -44,4 +46,11 @@ func (s *Service) GetIssueInfoList(ctx context.Context, issueKeys []string) ([]*
 		res = append(res, issue)
 	}
 	return res, nil
+}
+
+func (s *Service) GetIssueInfoListByRefs(ctx context.Context, refs []*models.IssueRef) ([]*models.IssueInfo, error) {
+	issueKeys := lo.Map(refs, func(r *models.IssueRef, _ int) string {
+		return r.Number
+	})
+	return s.GetIssueInfoList(ctx, issueKeys)
 }

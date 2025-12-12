@@ -3,6 +3,7 @@ package codereview
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"team-workflow-bot/internal/bag"
 	"team-workflow-bot/internal/integrations/slackflow"
@@ -15,7 +16,10 @@ import (
 )
 
 const (
-	crPreviewEditAndConfirmMetadataEventType = "cr_preview_edit_and_confirm"
+	crThreadCreatedMetaEventType = "cr_request_created"
+	handlerNameMetaField         = "handler"
+	contextMetaField             = "context"
+	handlerNameMetaValue         = "codereview.Handler"
 )
 
 // Золотистый
@@ -96,12 +100,6 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, cmd slack.SlashCo
 		//TODO текст уведомления
 		slack.MsgOptionText("Превью запроса код-ревью", false),
 		slack.MsgOptionPostEphemeral(cmd.UserID),
-		slack.MsgOptionMetadata(slack.SlackMetadata{
-			EventType: crPreviewEditAndConfirmMetadataEventType,
-			EventPayload: map[string]interface{}{
-				"handler": "codereview.Handler",
-			},
-		}),
 		slack.MsgOptionBlocks(slackviews.GetCrPreviewEditAndConfirmBlocks(crContext)...))
 }
 
@@ -117,17 +115,10 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, event slack.Intera
 	channelId := event.Channel.ID
 	userId := event.User.ID
 
-	if actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditCancel) {
-
-		_, _, _ = sl.PostMessage(channelId, slack.MsgOptionDeleteOriginal(responseUrl))
-
-		return
-	}
-
 	if actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditConfirm) {
 		ack()
 
-		request := GetRequestRefFromPreviewEdit(event.BlockActionState.Values, userId)
+		request := getRequestRefFromPreviewEdit(event.BlockActionState.Values, userId)
 
 		crContext, err := h.retriever.CollectCodeReviewContextFromSlackLite(ctx, request)
 		if err != nil {
@@ -136,28 +127,28 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, event slack.Intera
 			return
 		}
 
-		slRequester, err := h.bag.Client.Slack.GetUserInfoContext(ctx, userId)
-		if err != nil {
-			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, event.User.ID,
-				fmt.Sprintf("Ошибка при получении данных о пользователе Slack: %s", err.Error()))
-			return
-		}
-
 		messageBlocks := slackviews.GetCrThreadBlocks(crContext)
 
-		_, _, err = sl.PostMessage(channelId,
-			//TODO текст уведомления
+		options := []slack.MsgOption{
 			slack.MsgOptionText("Запрос код-ревью", false),
-			slack.MsgOptionIconURL(slRequester.Profile.Image192),
-			slack.MsgOptionUsername(slRequester.RealName),
 			slack.MsgOptionBlocks(messageBlocks...),
-			slack.MsgOptionMetadata(slack.SlackMetadata{
-				EventType: "cr_request_created",
-				EventPayload: map[string]interface{}{
-					"handler": "codereview.Handler",
-				},
-			}),
-		)
+			slack.MsgOptionMetadata(getSlackMetaData(crThreadCreatedMetaEventType, crContext)),
+		}
+
+		userProfile, err := h.bag.Client.Slack.GetUserProfileContext(ctx, &slack.GetUserProfileParameters{
+			UserID: userId,
+		})
+		if err != nil {
+			log.Println("Failed to get Slack user info:", err)
+		}
+
+		if userProfile != nil {
+			options = append(options,
+				slack.MsgOptionIconURL(userProfile.Image192),
+				slack.MsgOptionUsername(userProfile.RealName))
+		}
+
+		_, _, err = sl.PostMessage(channelId, options...)
 		if err != nil {
 			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, event.User.ID,
 				fmt.Sprintf("Ошибка при создании треда код-ревью: %s", err.Error()))
@@ -169,6 +160,30 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, event slack.Intera
 		return
 	}
 
+	if actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditCancel) {
+		_, _, _ = sl.PostMessage(channelId, slack.MsgOptionDeleteOriginal(responseUrl))
+
+		return
+	}
+
+	if actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.IssueRawListField) ||
+		actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField) {
+		ack()
+
+		request := getRequestRefFromPreviewEdit(event.BlockActionState.Values, userId)
+
+		crContext, err := h.retriever.CollectCodeReviewContextFromSlackLite(ctx, request)
+		if err != nil {
+			log.Println("Failed to collect code review context:", err)
+			return
+		}
+
+		_, _, err = sl.PostMessage(channelId,
+			slack.MsgOptionReplaceOriginal(responseUrl),
+			slack.MsgOptionBlocks(slackviews.GetCrPreviewEditAndConfirmBlocks(crContext)...))
+
+		return
+	}
 }
 
 func (h *Handler) isCommandApplicable(cmd slack.SlashCommand) bool {
@@ -176,7 +191,7 @@ func (h *Handler) isCommandApplicable(cmd slack.SlashCommand) bool {
 		cmd.Command == "/servit" && strings.HasPrefix(cmd.Text, "cr")
 }
 
-func GetRequestRefFromPreviewEdit(state slackviews.ViewStateValues, userId string) *models.RequestRef {
+func getRequestRefFromPreviewEdit(state slackviews.ViewStateValues, userId string) *models.RequestRef {
 	requesterRef := &models.UserRef{
 		SlackId: userId,
 	}
@@ -203,5 +218,15 @@ func GetRequestRefFromPreviewEdit(state slackviews.ViewStateValues, userId strin
 		Issues:       issueRefs,
 		Requester:    requesterRef,
 		Reviewers:    reviewerRefs,
+	}
+}
+
+func getSlackMetaData(eventType string, context *models.CodeReviewContext) slack.SlackMetadata {
+	return slack.SlackMetadata{
+		EventType: eventType,
+		EventPayload: map[string]any{
+			handlerNameMetaField: handlerNameMetaValue,
+			contextMetaField:     context,
+		},
 	}
 }

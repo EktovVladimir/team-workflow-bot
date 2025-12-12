@@ -43,8 +43,9 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 
 	dbRequester, _ := r.GetUserBySlackIdSafe(ctx, request.Requester)
 
+	prRefs := getUniqPullRequestRefs(request.PullRequests...)
 	prInfos := make([]*models.PullRequestInfo, 0)
-	for _, prRef := range request.PullRequests {
+	for _, prRef := range prRefs {
 		ghPr, _, err := gh.PullRequests.Get(ctx, prRef.Owner, prRef.Repo, prRef.Number)
 		if err != nil {
 			return nil, err
@@ -98,15 +99,15 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 
 func (r *Retriever) CollectCodeReviewContextFromSlackLite(ctx context.Context, request *models.RequestRef) (*models.CodeReviewContext, error) {
 
-	//TODO Пока что работаем через ПРы.
-	if len(request.PullRequests) == 0 /* && len(request.Issues) == 0 */ {
+	if len(request.PullRequests) == 0 {
 		return nil, ErrNoPRsOrIssues
 	}
 
 	gh := r.bag.Client.GitHub
 
+	prRefs := getUniqPullRequestRefs(request.PullRequests...)
 	prInfos := make([]*models.PullRequestInfo, 0)
-	for _, prRef := range request.PullRequests {
+	for _, prRef := range prRefs {
 		ghPr, _, err := gh.PullRequests.Get(ctx, prRef.Owner, prRef.Repo, prRef.Number)
 		if err != nil {
 			return nil, err
@@ -307,4 +308,10 @@ func getUniqKeysFromMessages(messages ...string) []string {
 	})
 
 	return lo.Uniq(keys)
+}
+
+func getUniqPullRequestRefs(prRefs ...*models.PullRequestRef) []models.PullRequestRef {
+	return lo.Uniq(lo.Map(prRefs, func(pr *models.PullRequestRef, _ int) models.PullRequestRef {
+		return *pr
+	}))
 }
