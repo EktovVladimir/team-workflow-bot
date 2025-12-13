@@ -1,19 +1,21 @@
 package models
 
 const (
+	//TODO более гибкие роли и права
 	RoleAdmin     = "admin"
 	RoleModerator = "moderator"
 	RoleUser      = "user"
 )
 
 type User struct {
-	Id          string   `bson:"_id,omitempty"`
-	Email       string   `bson:"email"`
-	SlackName   string   `bson:"slack_name"`
-	SlackId     string   `bson:"slack_id"`
-	GitHubLogin string   `bson:"github_login"`
-	Roles       []string `bson:"roles,omitempty"`
-	Teams       []string `bson:"teams,omitempty"`
+	Id              string   `bson:"_id,omitempty"`
+	Email           string   `bson:"email"`
+	SlackName       string   `bson:"slack_name"`
+	SlackId         string   `bson:"slack_id"`
+	GitHubLogin     string   `bson:"github_login"`
+	AlternateLogins []string `bson:"alternate_logins,omitempty"`
+	Roles           []string `bson:"roles,omitempty"`
+	Teams           []string `bson:"teams,omitempty"`
 }
 
 func (u *User) ToRef() *UserRef {
@@ -44,4 +46,10 @@ type Team struct {
 	Description string `bson:"description,omitempty"`
 	IssueRegex  string `bson:"issue_regex,omitempty"`
 	Channel     string `bson:"channel,omitempty"`
+}
+
+type CodeReviewThread struct {
+	Id      string             `bson:"_id,omitempty"`
+	Thread  *ThreadRef         `bson:"thread"`
+	Context *CodeReviewContext `bson:"context"`
 }

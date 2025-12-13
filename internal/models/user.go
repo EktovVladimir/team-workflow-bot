@@ -1,8 +1,8 @@
 package models
 
 type UserRef struct {
-	SlackId     string
-	GithubLogin string
+	SlackId     string `bson:"slack_id"`
+	GithubLogin string `bson:"github_login"`
 }
 
 func (u *UserRef) IsEmpty() bool {

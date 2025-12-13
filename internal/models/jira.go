@@ -3,15 +3,17 @@ package models
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"team-workflow-bot/internal/constants"
 )
 
 type IssueRef struct {
-	Owner   string
-	Project string
-	Number  string
+	Owner   string `bson:"owner"`
+	Project string `bson:"project"`
+	Number  int    `bson:"number"`
+	Key     string `bson:"key"`
 }
 
 func (ref *IssueRef) ToUrl() string {
@@ -19,7 +21,7 @@ func (ref *IssueRef) ToUrl() string {
 	if owner == "" {
 		owner = constants.DefaultJiraOwner
 	}
-	return fmt.Sprintf("https://%s.atlassian.net/browse/%s", owner, ref.Number)
+	return fmt.Sprintf("https://%s.atlassian.net/browse/%s", owner, ref.Key)
 }
 
 func ParseIssueRefFromUrl(url string) (*IssueRef, bool) {
@@ -37,8 +39,15 @@ func ParseIssueRefFromUrl(url string) (*IssueRef, bool) {
 		owner = constants.DefaultJiraOwner
 	}
 
+	parsedNumber, _ := strconv.Atoi(number)
+
 	fullKey := project + "-" + number
-	return &IssueRef{Owner: owner, Project: project, Number: fullKey}, true
+	return &IssueRef{
+		Owner:   owner,
+		Project: project,
+		Key:     fullKey,
+		Number:  parsedNumber,
+	}, true
 }
 
 type IssueInfo struct {

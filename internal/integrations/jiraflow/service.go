@@ -26,7 +26,7 @@ func (s *Service) GetIssueInfo(ctx context.Context, issueKey string) (*models.Is
 
 	return &models.IssueInfo{
 		Ref: &models.IssueRef{
-			Number:  jIssue.Key,
+			Key:     jIssue.Key,
 			Project: jIssue.Fields.Project.Key,
 			Owner:   "", // TODO Возможно нужно как-то определять владельца проекта
 		},
@@ -50,7 +50,7 @@ func (s *Service) GetIssueInfoList(ctx context.Context, issueKeys []string) ([]*
 
 func (s *Service) GetIssueInfoListByRefs(ctx context.Context, refs []*models.IssueRef) ([]*models.IssueInfo, error) {
 	issueKeys := lo.Map(refs, func(r *models.IssueRef, _ int) string {
-		return r.Number
+		return r.Key
 	})
 	return s.GetIssueInfoList(ctx, issueKeys)
 }

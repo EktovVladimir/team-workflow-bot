@@ -101,7 +101,7 @@ func (h *Handler) HandleSlackViewSubmission(
 		client.Ack(*evt.Request)
 
 		user, err := h.bag.DB.Repository.GetBySlackId(ctx, slackId)
-		if err != nil && !errors.Is(err, db.RecordNotFound) {
+		if err != nil && !errors.Is(err, db.ErrRecordNotFound) {
 			log.Printf("Error getting user by slack id %v: %v", slackId, err)
 			return
 		}
@@ -158,7 +158,7 @@ func (h *Handler) configureUsers(
 		}
 
 		user, err := h.bag.DB.Repository.GetBySlackId(ctx, userId)
-		if err != nil && !errors.Is(err, db.RecordNotFound) {
+		if err != nil && !errors.Is(err, db.ErrRecordNotFound) {
 			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, data.channelId, data.userId,
 				"Ошибка при запросе БД: "+err.Error())
 			return

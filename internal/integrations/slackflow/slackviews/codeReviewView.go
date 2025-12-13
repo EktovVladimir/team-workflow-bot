@@ -177,7 +177,7 @@ func GetIssueListBlocks(issues ...*models.IssueInfo) []slack.Block {
 		text := fmt.Sprintf(
 			":jira: <%s|%s - %s>",
 			issue.Ref.ToUrl(),
-			issue.Ref.Number,
+			issue.Ref.Key,
 			issue.Title)
 
 		res = append(res, GetMarkdownTextSectionBlock(text))

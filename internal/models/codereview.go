@@ -14,15 +14,15 @@ type CodeReviewCollectRequest struct {
 
 func (r *CodeReviewCollectRequest) GetIssueKeys() []string {
 	res := lo.Map(r.Issues, func(issueRef *IssueRef, _ int) string {
-		return issueRef.Number
+		return issueRef.Key
 	})
 	return lo.Uniq(res)
 }
 
 type CodeReviewContext struct {
-	Key          string
-	Requester    *UserRef
-	Reviewers    []*UserRef
-	PullRequests []*PullRequestInfo
-	Issues       []*IssueInfo
+	Key          string             `bson:"key"`
+	Requester    *UserRef           `bson:"requester"`
+	Reviewers    []*UserRef         `bson:"reviewers"`
+	PullRequests []*PullRequestInfo `bson:"pull_requests"`
+	Issues       []*IssueInfo       `bson:"issues"`
 }

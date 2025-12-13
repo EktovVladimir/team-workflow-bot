@@ -3,7 +3,7 @@ package models
 import "testing"
 
 func TestIssueRef_ToUrl_DefaultOwner(t *testing.T) {
-	ref := &IssueRef{Owner: "", Project: "PROJ", Number: "PROJ-123"}
+	ref := &IssueRef{Owner: "", Project: "PROJ", Key: "PROJ-123"}
 	got := ref.ToUrl()
 	want := "https://aviasales.atlassian.net/browse/PROJ-123"
 	if got != want {
@@ -28,7 +28,7 @@ func TestParseIssueRefFromUrl_Valid(t *testing.T) {
 		if !ok || ref == nil {
 			t.Fatalf("expected ok for %q", c.in)
 		}
-		if ref.Owner != c.owner || ref.Project != c.project || ref.Number != c.number {
+		if ref.Owner != c.owner || ref.Project != c.project || ref.Key != c.number {
 			t.Fatalf("parsed mismatch for %q: got %+v", c.in, ref)
 		}
 	}

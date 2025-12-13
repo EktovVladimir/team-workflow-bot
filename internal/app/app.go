@@ -47,6 +47,11 @@ func (a *App) Start(ctx context.Context) {
 
 	mongoDb := mongo.Database(a.config.Mongo.DB)
 
+	if err := db.EnsureIndexes(ctx, mongoDb); err != nil {
+		log.Fatalf("Error ensuring Mongo indexes: %v", err)
+		return
+	}
+
 	repository := db.NewRepository(mongoDb)
 
 	err = global.InitGlobalStorageData(ctx, repository)
