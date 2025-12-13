@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	CrPreviewEditModal      = "cr_preview_edit_modal"
 	CrPreviewEdit           = "cr_preview_edit"
 	ReviewersField          = "reviewers"
 	PullRequestRawListField = "pull_request_raw_list"
@@ -123,6 +124,21 @@ func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext, resetIssueLi
 	res := append(inputs, confirmActionBlock)
 
 	return res
+}
+
+func GetCrPreviewModal(cr *models.CodeReviewContext, resetIssueList bool) slack.ModalViewRequest {
+	inputs := GetCrPreviewEditBlocks(cr, resetIssueList)
+
+	return slack.ModalViewRequest{
+		CallbackID: GetCallbackId(CrPreviewEditModal),
+		Type:       slack.VTModal,
+		Title:      GetEmojiPlainTextObject("Создание треда #CR"),
+		Submit:     GetSimplePlainTextObject("Подтвердить"),
+		Close:      GetSimplePlainTextObject("Отмена"),
+		Blocks: slack.Blocks{
+			BlockSet: inputs,
+		},
+	}
 }
 
 func GetPullRequestListBlocks(prs ...*models.PullRequestInfo) []slack.Block {
