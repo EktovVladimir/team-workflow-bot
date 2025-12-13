@@ -79,9 +79,9 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 		// Если можем, используем номер первой задачи из названия ветки.
 		// Если ветка не содержит номер, то просто используем название ветки.
 		if len(issueKeysFromBranches) != 0 {
-			res.Key = issueKeysFromBranches[0]
+			res.KeyedIssue = issueKeysFromBranches[0]
 		} else {
-			res.Key = headBrunchNames[0]
+			res.KeyedIssue = headBrunchNames[0]
 		}
 
 		if !request.DisableCollectIssuesFromPr {

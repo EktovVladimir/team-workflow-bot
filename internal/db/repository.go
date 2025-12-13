@@ -202,7 +202,7 @@ func (r *Repository) UpdateCodeReviewThread(ctx context.Context, item *models.Co
 
 	_, err := r.db.Collection(CodeReviewThreadsCollection).UpdateOne(
 		ctx,
-		bson.M{"context.key": item.Context.Key},
+		bson.M{"context.key": item.Context.KeyedIssue},
 		bson.M{"$set": &updCrt},
 	)
 

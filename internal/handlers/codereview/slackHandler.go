@@ -71,7 +71,7 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, evt *socketmode.E
 			return
 		}
 	} else {
-		notificationText := fmt.Sprintf("Превью #CR треда %s", crContext.Key)
+		notificationText := fmt.Sprintf("Превью #CR треда %s", crContext.KeyedIssue)
 
 		_, _, _, err = client.SendMessageContext(
 			ctx,
@@ -240,7 +240,7 @@ func (h *Handler) handleAndSendCrThread(
 
 	messageBlocks := slackviews.GetCrThreadBlocks(crContext)
 
-	notificationText := fmt.Sprintf("#CR от <@%s> по задаче %s", crRequest.Requester.SlackId, crContext.Key)
+	notificationText := fmt.Sprintf("#CR от <@%s> по задаче %s", crRequest.Requester.SlackId, crContext.KeyedIssue)
 
 	options := []slack.MsgOption{
 		slack.MsgOptionText(notificationText, false),
@@ -266,13 +266,24 @@ func (h *Handler) handleAndSendCrThread(
 		return err
 	}
 
-	_, err = h.bag.DB.Repository.CreateCodeReviewThread(ctx, &models.CodeReviewThread{
+	dbRecord := &models.CodeReviewThread{
 		Thread: &models.ThreadRef{
 			ChannelId: respChannel,
 			Ts:        respTs,
 		},
 		Context: crContext,
+		Status:  models.CodeReviewStatusOpen,
+	}
+
+	messageLink, err := h.bag.Client.Slack.GetPermalinkContext(ctx, &slack.PermalinkParameters{
+		Channel: respChannel,
+		Ts:      respTs,
 	})
+	if err == nil {
+		dbRecord.MessageLink = messageLink
+	}
+
+	_, err = h.bag.DB.Repository.CreateCodeReviewThread(ctx, dbRecord)
 	if err != nil {
 		return err
 	}

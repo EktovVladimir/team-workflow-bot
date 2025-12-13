@@ -20,7 +20,7 @@ func (r *CodeReviewCollectRequest) GetIssueKeys() []string {
 }
 
 type CodeReviewContext struct {
-	Key          string             `bson:"key"`
+	KeyedIssue   string             `bson:"keyed_issue"`
 	Requester    *UserRef           `bson:"requester"`
 	Reviewers    []*UserRef         `bson:"reviewers"`
 	PullRequests []*PullRequestInfo `bson:"pull_requests"`

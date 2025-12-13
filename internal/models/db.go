@@ -7,6 +7,12 @@ const (
 	RoleUser      = "user"
 )
 
+const (
+	CodeReviewStatusOpen     = "open"
+	CodeReviewStatusClosed   = "closed"
+	CodeReviewStatusCanceled = "canceled"
+)
+
 type User struct {
 	Id              string   `bson:"_id,omitempty"`
 	Email           string   `bson:"email"`
@@ -49,7 +55,9 @@ type Team struct {
 }
 
 type CodeReviewThread struct {
-	Id      string             `bson:"_id,omitempty"`
-	Thread  *ThreadRef         `bson:"thread"`
-	Context *CodeReviewContext `bson:"context"`
+	Id          string             `bson:"_id,omitempty"`
+	Thread      *ThreadRef         `bson:"thread"`
+	MessageLink string             `bson:"message_link,omitempty"`
+	Status      string             `bson:"status,omitempty"`
+	Context     *CodeReviewContext `bson:"context"`
 }
