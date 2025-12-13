@@ -20,6 +20,15 @@ func GetSelectedUser(vs ViewStateValues, base string, field string) string {
 	return input.SelectedUser
 }
 
+func GetSelectedChannel(vs ViewStateValues, base string, field string) string {
+	input, _, _, ok := GetViewStateValue(vs, base, field)
+	if !ok {
+		return ""
+	}
+
+	return input.SelectedChannel
+}
+
 func GetSelectedUsers(vs ViewStateValues, base string, field string) []string {
 	input, _, _, ok := GetViewStateValue(vs, base, field)
 	if !ok {

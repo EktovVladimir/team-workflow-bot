@@ -6,12 +6,10 @@ import (
 	"log"
 	"strings"
 	"team-workflow-bot/internal/bag"
-	"team-workflow-bot/internal/integrations/slackflow"
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
 
 	"github.com/google/go-github/v79/github"
-	"github.com/samber/lo"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
 )
@@ -86,13 +84,12 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, evt *socketmode.E
 	//TODO пытаемся сохранить в БД новых юзеров?
 
 	if sendAsModal {
-
 		triggerId := cmd.TriggerID
 
 		_, err = client.OpenViewContext(
 			ctx,
 			triggerId,
-			slackviews.GetCrPreviewModal(crContext, false))
+			slackviews.GetCrPreviewModal(crContext, cmd.ChannelID, false))
 		if err != nil {
 			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
 				fmt.Sprintf("Ошибка при открытии модального окна превью код-ревью: %s", err.Error()))
@@ -129,9 +126,6 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 	userId := callback.User.ID
 
 	var (
-		//TODO конфиг или доп.опция
-		useRequesterIdentity = false
-
 		crPreviewSubmitActionId    = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditConfirm)
 		crPreviewCancelActionId    = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditCancel)
 		crPreviewPrListActionId    = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
@@ -141,44 +135,16 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 	if actionId == crPreviewSubmitActionId {
 		client.Ack(*evt.Request)
 
-		request := getRequestRefFromPreviewEdit(callback.BlockActionState.Values, userId)
+		form := getRequestRefFromPreviewEdit(callback.BlockActionState.Values, userId)
+		request := form.ToCodeReviewCollectRequest()
+
 		request.DisableCollectReviewersFromPr = true
 		request.DisableCollectIssuesFromPr = true
 
-		crContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, request)
+		err := h.handleAndSendCrThread(ctx, request, channelId, form.AsUser)
 		if err != nil {
 			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, callback.User.ID,
-				fmt.Sprintf("Ошибка при сборе контекста код-ревью: %s", err.Error()))
-			return
-		}
-
-		messageBlocks := slackviews.GetCrThreadBlocks(crContext)
-
-		notificationText := fmt.Sprintf("#CR от <@%s> по задаче %s", userId, crContext.Key)
-
-		options := []slack.MsgOption{
-			slack.MsgOptionText(notificationText, false),
-			slack.MsgOptionBlocks(messageBlocks...),
-			slack.MsgOptionMetadata(getSlackMetaData(crThreadCreatedMetaEventType, crContext)),
-		}
-
-		userProfile, err := h.bag.Client.Slack.GetUserProfileContext(ctx, &slack.GetUserProfileParameters{
-			UserID: userId,
-		})
-		if err != nil {
-			log.Println("Failed to get Slack user info:", err)
-		}
-
-		if useRequesterIdentity && userProfile != nil {
-			options = append(options,
-				slack.MsgOptionIconURL(userProfile.Image192),
-				slack.MsgOptionUsername(userProfile.RealName))
-		}
-
-		_, _, err = sl.PostMessage(channelId, options...)
-		if err != nil {
-			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, callback.User.ID,
-				fmt.Sprintf("Ошибка при создании треда код-ревью: %s", err.Error()))
+				fmt.Sprintf("Не удалось создать #CR тред: %s", err.Error()))
 			return
 		}
 
@@ -205,7 +171,9 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 			values = callback.BlockActionState.Values
 		}
 
-		request := getRequestRefFromPreviewEdit(values, userId)
+		form := getRequestRefFromPreviewEdit(values, userId)
+		request := form.ToCodeReviewCollectRequest()
+
 		request.DisableCollectReviewersFromPr = true
 
 		//TODO false для crPreviewPrListActionId, но сначала разобраться с обновлением инпутов
@@ -230,7 +198,7 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 
 		if callback.Container.Type == "view" {
 			viewId := callback.View.ID
-			newViewRequest := slackviews.GetCrPreviewModal(crContext, true)
+			newViewRequest := slackviews.GetCrPreviewModal(crContext, channelId, true)
 
 			_, err = client.UpdateViewContext(ctx, newViewRequest, "", "", viewId)
 			_ = err
@@ -241,10 +209,24 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 }
 
 func (h *Handler) HandleSlackViewSubmission(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, callback slack.InteractionCallback) {
-	if callback.View.CallbackID != slackviews.CrPreviewEditModal {
+	if callback.View.CallbackID != slackviews.GetCallbackId(slackviews.CrPreviewEditModal) {
 		return
 	}
 
+	userId := callback.User.ID
+
+	form := getRequestRefFromPreviewEdit(callback.View.State.Values, userId)
+	request := form.ToCodeReviewCollectRequest()
+	request.DisableCollectReviewersFromPr = true
+	request.DisableCollectIssuesFromPr = true
+
+	err := h.handleAndSendCrThread(ctx, request, form.ChannelId, form.AsUser)
+	if err != nil {
+		log.Printf("Unexpected error while handling CR preview submission: %v", err)
+		return
+	}
+
+	client.Ack(*evt.Request)
 }
 
 func (h *Handler) isCommandApplicable(cmd slack.SlashCommand) bool {
@@ -252,57 +234,61 @@ func (h *Handler) isCommandApplicable(cmd slack.SlashCommand) bool {
 		cmd.Command == "/servit" && strings.HasPrefix(cmd.Text, "cr")
 }
 
-func getRequestRefFromPreviewEdit(state slackviews.ViewStateValues, userId string) *models.CodeReviewCollectRequest {
-	requesterRef := &models.UserRef{
-		SlackId: userId,
-	}
-
+func getRequestRefFromPreviewEdit(state slackviews.ViewStateValues, userId string) *CrPreviewFormData {
 	reviewerSlackIds := slackviews.GetSelectedUsers(state, slackviews.CrPreviewEdit, slackviews.ReviewersField)
-	reviewerRefs := lo.Map(reviewerSlackIds, func(id string, i int) *models.UserRef {
-		return &models.UserRef{
-			SlackId: id,
-		}
-	})
-
 	prUrls := slackviews.GetMultilineInputText(state, slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
-	prRefs := getParsedFromUrlPullRequestRefs(prUrls)
-
 	issuesUrls := slackviews.GetMultilineInputText(state, slackviews.CrPreviewEdit, slackviews.IssueRawListField)
-	issueRefs := getParsedFromUrlIssueRefs(issuesUrls)
+	channelId := slackviews.GetSelectedChannel(state, slackviews.CrPreviewEdit, slackviews.ChannelField)
 
-	return &models.CodeReviewCollectRequest{
-		PullRequests: prRefs,
-		Issues:       issueRefs,
-		Requester:    requesterRef,
-		Reviewers:    reviewerRefs,
+	return &CrPreviewFormData{
+		ChannelId:        channelId,
+		PullRequestUrls:  prUrls,
+		IssueUrls:        issuesUrls,
+		RequesterSlackId: userId,
+		ReviewerSlackIds: reviewerSlackIds,
 	}
 }
 
-func getParsedFromUrlPullRequestRefs(prUrls []string) []*models.PullRequestRef {
-	uniqUrls := lo.Uniq(prUrls)
-	return lo.FilterMap(uniqUrls, func(arg string, i int) (*models.PullRequestRef, bool) {
-		return models.ParsePullRequestRefFromUrl(arg)
-	})
-}
+func (h *Handler) handleAndSendCrThread(
+	ctx context.Context,
+	crRequest *models.CodeReviewCollectRequest,
+	channelId string,
+	sendAsUser bool) error {
 
-func getParsedFromUrlIssueRefs(issueUrls []string) []*models.IssueRef {
-	uniqUrls := lo.Uniq(issueUrls)
-	return lo.FilterMap(uniqUrls, func(arg string, i int) (*models.IssueRef, bool) {
-		return models.ParseIssueRefFromUrl(arg)
-	})
-}
+	crContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, crRequest)
+	if err != nil {
+		return err
+	}
 
-func getParsedFromFormatUserRefs(slackUserMention []string) []*models.UserRef {
-	uniqMentions := lo.Uniq(slackUserMention)
-	return lo.FilterMap(uniqMentions, func(arg string, i int) (*models.UserRef, bool) {
-		userId, _, ok := slackflow.ParseEscapedLink(arg)
-		if !ok {
-			return nil, false
-		}
-		return &models.UserRef{
-			SlackId: userId,
-		}, true
+	messageBlocks := slackviews.GetCrThreadBlocks(crContext)
+
+	notificationText := fmt.Sprintf("#CR от <@%s> по задаче %s", crRequest.Requester.SlackId, crContext.Key)
+
+	options := []slack.MsgOption{
+		slack.MsgOptionText(notificationText, false),
+		slack.MsgOptionBlocks(messageBlocks...),
+		slack.MsgOptionMetadata(getSlackMetaData(crThreadCreatedMetaEventType, crContext)),
+	}
+
+	userProfile, err := h.bag.Client.Slack.GetUserProfileContext(ctx, &slack.GetUserProfileParameters{
+		UserID: crRequest.Requester.SlackId,
 	})
+	if err != nil {
+		log.Println("Failed to get Slack user info:", err)
+	}
+
+	if sendAsUser && userProfile != nil {
+		options = append(options,
+			slack.MsgOptionIconURL(userProfile.Image192),
+			slack.MsgOptionUsername(userProfile.RealName))
+	}
+
+	_, _, err = h.bag.Client.Slack.PostMessage(channelId, options...)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func getSlackMetaData(eventType string, context *models.CodeReviewContext) slack.SlackMetadata {

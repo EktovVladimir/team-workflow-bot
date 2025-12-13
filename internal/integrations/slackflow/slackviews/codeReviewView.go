@@ -12,6 +12,7 @@ import (
 const (
 	CrPreviewEditModal      = "cr_preview_edit_modal"
 	CrPreviewEdit           = "cr_preview_edit"
+	ChannelField            = "channel"
 	ReviewersField          = "reviewers"
 	PullRequestRawListField = "pull_request_raw_list"
 	IssueRawListField       = "issue_raw_list"
@@ -75,6 +76,7 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, resetIssueList bool) [
 			WithDispatchAction(true),
 			WithInitialValue(issuesListInputText),
 			WithMultiline(true),
+			WithOptional(true),
 			WithPlaceholder("Список URL задач. По одному в строке."),
 			WithHint("Можно редактировать список. По одной ссылке на строку. В итоговый тред попадут указанные здесь задачи.")))
 	res = append(res, GetIssueListBlocks(cr.Issues...)...)
@@ -87,11 +89,15 @@ func GetCrThreadBlocks(cr *models.CodeReviewContext) []slack.Block {
 
 	res = append(res, GetReviewersBlocks(cr.Reviewers)...)
 	res = append(res, slack.NewDividerBlock())
+
+	if len(cr.Issues) > 0 {
+		res = append(res, GetMarkdownTextSectionBlock("*Issues:*"))
+		res = append(res, GetIssueListBlocks(cr.Issues...)...)
+		res = append(res, slack.NewDividerBlock())
+	}
+
 	res = append(res, GetMarkdownTextSectionBlock("*Pull requests:*"))
 	res = append(res, GetPullRequestListBlocks(cr.PullRequests...)...)
-	res = append(res, slack.NewDividerBlock())
-	res = append(res, GetMarkdownTextSectionBlock("*Issues:*"))
-	res = append(res, GetIssueListBlocks(cr.Issues...)...)
 	res = append(res, slack.NewDividerBlock())
 
 	requesterSlackName := cr.Requester.SlackId
@@ -126,8 +132,15 @@ func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext, resetIssueLi
 	return res
 }
 
-func GetCrPreviewModal(cr *models.CodeReviewContext, resetIssueList bool) slack.ModalViewRequest {
-	inputs := GetCrPreviewEditBlocks(cr, resetIssueList)
+func GetCrPreviewModal(cr *models.CodeReviewContext, channelId string, resetIssueList bool) slack.ModalViewRequest {
+
+	blocks := make([]slack.Block, 0)
+	blocks = append(blocks, GetChannelInputBlock(
+		GetBlockId(CrPreviewEdit, ChannelField),
+		GetActionId(CrPreviewEdit, ChannelField),
+		"Канал для создания треда",
+		WithInitialValue(channelId)))
+	blocks = append(blocks, GetCrPreviewEditBlocks(cr, resetIssueList)...)
 
 	return slack.ModalViewRequest{
 		CallbackID: GetCallbackId(CrPreviewEditModal),
@@ -136,7 +149,7 @@ func GetCrPreviewModal(cr *models.CodeReviewContext, resetIssueList bool) slack.
 		Submit:     GetSimplePlainTextObject("Подтвердить"),
 		Close:      GetSimplePlainTextObject("Отмена"),
 		Blocks: slack.Blocks{
-			BlockSet: inputs,
+			BlockSet: blocks,
 		},
 	}
 }

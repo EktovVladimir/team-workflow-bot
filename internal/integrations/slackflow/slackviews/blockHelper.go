@@ -32,6 +32,29 @@ func GetUserInputBlock(blockId string, actionId string, label string, options ..
 		selectElement)
 }
 
+func GetChannelInputBlock(blockId string, actionId string, label string, options ...BlockHelperOption) *slack.InputBlock {
+	cfg := applyBlockHelperOptions(options...)
+
+	labelElement := GetSimplePlainTextObject(label)
+
+	var hintElement *slack.TextBlockObject
+	if cfg.hint != "" {
+		hintElement = GetSimplePlainTextObject(cfg.hint)
+	}
+
+	selectElement := slack.NewOptionsSelectBlockElement(slack.OptTypeChannels, labelElement, actionId)
+
+	if cfg.initialValue != "" {
+		selectElement.InitialChannel = cfg.initialValue
+	}
+
+	return slack.NewInputBlock(
+		blockId,
+		labelElement,
+		hintElement,
+		selectElement)
+}
+
 func GetUserMultiSelectInputBlock(
 	blockId string,
 	actionId string,
