@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"errors"
-	"log"
 	"regexp"
 	"strings"
 	"team-workflow-bot/internal/bag"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/google/go-github/v79/github"
 	"github.com/samber/lo"
+	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
 )
 
@@ -243,7 +243,7 @@ func (r *Retriever) GetIssueKeysFromCommitMessages(ctx context.Context, prRefs .
 	for _, prRef := range prRefs {
 		ghCommits, err := r.bag.Services.Github.GetAllCommits(ctx, prRef)
 		if err != nil {
-			log.Println("Ignoring error while retrieving commits for PR:", err)
+			logrus.Warning("Ignoring error while retrieving commits for PR:", err)
 			continue
 		}
 

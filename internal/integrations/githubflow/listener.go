@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"team-workflow-bot/internal/config"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Listener struct {
@@ -30,7 +31,7 @@ func (l *Listener) Run(ctx context.Context) error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		log.Printf("Github webhook listener start httpServer on %s", addr)
+		logrus.Infof("Github webhook listener start httpServer on %s", addr)
 		if err := http.ListenAndServe(addr, nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- fmt.Errorf("failed to start httpServer: %w", err)
 		}
@@ -38,9 +39,9 @@ func (l *Listener) Run(ctx context.Context) error {
 
 	select {
 	case err := <-serverErr:
-		log.Printf("Github webhook httpServer has error: %v", err)
+		logrus.Errorf("Github webhook httpServer has error: %v", err)
 	case <-ctx.Done():
-		log.Printf("Github webhook httpServer received shutdown signal")
+		logrus.Infof("Github webhook httpServer received shutdown signal")
 	}
 
 	return nil

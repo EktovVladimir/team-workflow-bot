@@ -3,11 +3,11 @@ package codereview
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
 
+	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
 )
@@ -118,6 +118,7 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 
 		err := h.handleAndSendCrThread(ctx, request, channelId, form.AsUser)
 		if err != nil {
+			logrus.Error("Failed to handle and send cr thread:", err)
 			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, callback.User.ID,
 				fmt.Sprintf("Не удалось создать #CR тред: %s", err.Error()))
 			return
@@ -159,7 +160,7 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 			//TODO ошибка в модалку
 			client.Ack(*evt.Request)
 
-			log.Println("Failed to collect code review context:", err)
+			logrus.Error("Failed to collect code review context:", err)
 			return
 		}
 
@@ -199,6 +200,7 @@ func (h *Handler) HandleSlackViewSubmission(ctx context.Context, evt *socketmode
 
 	err := h.handleAndSendCrThread(ctx, request, form.ChannelId, form.AsUser)
 	if err != nil {
+		logrus.Error("Failed to handle Slack view submission:", err)
 		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, form.ChannelId, callback.User.ID,
 			fmt.Sprintf("Не удалось создать #CR тред: %s", err.Error()))
 		return
@@ -250,7 +252,7 @@ func (h *Handler) handleAndSendCrThread(
 		UserID: crRequest.Requester.SlackId,
 	})
 	if err != nil {
-		log.Println("Failed to get Slack user info:", err)
+		logrus.Error("Failed to get Slack user info:", err)
 	}
 
 	if sendAsUser && userProfile != nil {
@@ -271,7 +273,6 @@ func (h *Handler) handleAndSendCrThread(
 		},
 		Context: crContext,
 	})
-
 	if err != nil {
 		return err
 	}

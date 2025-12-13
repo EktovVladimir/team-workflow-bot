@@ -2,12 +2,12 @@ package githubflow
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"team-workflow-bot/internal/config"
 
 	"github.com/cbrgm/githubevents/v2/githubevents"
 	"github.com/google/go-github/v79/github"
+	"github.com/sirupsen/logrus"
 )
 
 type HttpHandler func(w http.ResponseWriter, r *http.Request)
@@ -38,7 +38,7 @@ func (l *Handler) GetHttpHandler() HttpHandler {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := handle.HandleEventRequest(r)
 		if err != nil {
-			log.Printf("Error handling GitHub event: %v", err)
+			logrus.Errorf("Error handling GitHub event: %v", err)
 		}
 	}
 }

@@ -2,11 +2,11 @@ package slackflow
 
 import (
 	"context"
-	"log"
-	"os"
 	"team-workflow-bot/internal/config"
 	"team-workflow-bot/internal/global"
+	"team-workflow-bot/internal/logger"
 
+	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -24,7 +24,7 @@ func NewListener(slackClient *slack.Client, config *config.Config, options ...Li
 	socketClient := socketmode.New(
 		slackClient,
 		socketmode.OptionDebug(global.IsDev),
-		socketmode.OptionLog(log.New(os.Stdout, "slack-socket: ", log.Lshortfile|log.LstdFlags)),
+		socketmode.OptionLog(logger.NewStdLogger(logrus.DebugLevel, "slack-socket: ")),
 	)
 
 	optionsConfig := newListenerOptionConfig(options...)

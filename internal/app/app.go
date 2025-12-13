@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"log"
-	"os"
 	"sync"
 	"team-workflow-bot/internal/bag"
 	"team-workflow-bot/internal/config"
@@ -14,10 +12,12 @@ import (
 	"team-workflow-bot/internal/integrations/githubflow"
 	"team-workflow-bot/internal/integrations/jiraflow"
 	"team-workflow-bot/internal/integrations/slackflow"
+	"team-workflow-bot/internal/logger"
 	"team-workflow-bot/internal/services"
 
 	"github.com/andygrunwald/go-jira"
 	"github.com/google/go-github/v79/github"
+	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
 )
 
@@ -34,11 +34,11 @@ func NewApp(cfg *config.Config) *App {
 func (a *App) Start(ctx context.Context) {
 	wg := &sync.WaitGroup{}
 
-	log.Println("Starting Team Workflow Bot...")
+	logrus.Info("Starting Team Workflow Bot...")
 
 	mongo, err := db.ConnectMongo(ctx, a.config)
 	if err != nil {
-		log.Fatalf("Error connecting to Mongo: %v", err)
+		logrus.Fatalf("Error connecting to Mongo: %v", err)
 		return
 	}
 	defer func() {
@@ -48,7 +48,7 @@ func (a *App) Start(ctx context.Context) {
 	mongoDb := mongo.Database(a.config.Mongo.DB)
 
 	if err := db.EnsureIndexes(ctx, mongoDb); err != nil {
-		log.Fatalf("Error ensuring Mongo indexes: %v", err)
+		logrus.Fatalf("Error ensuring Mongo indexes: %v", err)
 		return
 	}
 
@@ -56,7 +56,7 @@ func (a *App) Start(ctx context.Context) {
 
 	err = global.InitGlobalStorageData(ctx, repository)
 	if err != nil {
-		log.Fatalf("Error initializing global storage data: %v", err)
+		logrus.Fatalf("Error initializing global storage data: %v", err)
 		return
 	}
 
@@ -64,7 +64,7 @@ func (a *App) Start(ctx context.Context) {
 		a.config.Slack.BotToken,
 		slack.OptionDebug(global.IsDev),
 		slack.OptionAppLevelToken(a.config.Slack.AppToken),
-		slack.OptionLog(log.New(os.Stdout, "slack-api: ", log.Lshortfile|log.LstdFlags)),
+		slack.OptionLog(logger.NewStdLogger(logrus.DebugLevel, "slack-api: ")),
 	)
 
 	githubClient := github.NewClient(nil).WithAuthToken(a.config.GitHub.Token)
@@ -116,7 +116,7 @@ func (a *App) Start(ctx context.Context) {
 
 		err := slackListener.Run(ctx)
 		if err != nil {
-			log.Fatal(err)
+			logrus.Fatal(err)
 			return
 		}
 	}()

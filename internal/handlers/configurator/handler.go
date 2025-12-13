@@ -3,7 +3,6 @@ package configurator
 import (
 	"context"
 	"errors"
-	"log"
 	"strings"
 	"team-workflow-bot/internal/bag"
 	"team-workflow-bot/internal/db"
@@ -11,6 +10,7 @@ import (
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
 
+	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
 )
@@ -102,7 +102,7 @@ func (h *Handler) HandleSlackViewSubmission(
 
 		user, err := h.bag.DB.Repository.GetBySlackId(ctx, slackId)
 		if err != nil && !errors.Is(err, db.ErrRecordNotFound) {
-			log.Printf("Error getting user by slack id %v: %v", slackId, err)
+			logrus.Errorf("Error getting user by slack id %v: %v", slackId, err)
 			return
 		}
 
@@ -116,7 +116,7 @@ func (h *Handler) HandleSlackViewSubmission(
 			}
 			_, err = h.bag.DB.Repository.CreateUser(ctx, user)
 			if err != nil {
-				log.Printf("Error creating user with slack id %v: %v", slackId, err)
+				logrus.Errorf("Error creating user with slack id %v: %v", slackId, err)
 				return
 			}
 		} else {
@@ -127,7 +127,7 @@ func (h *Handler) HandleSlackViewSubmission(
 
 			err = h.bag.DB.Repository.UpdateUser(ctx, user)
 			if err != nil {
-				log.Printf("Error updating user with slack id %v: %v", slackId, err)
+				logrus.Errorf("Error updating user with slack id %v: %v", slackId, err)
 				return
 			}
 		}

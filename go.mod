@@ -7,7 +7,10 @@ require (
 	github.com/cbrgm/githubevents/v2 v2.10.1
 	github.com/google/go-github/v79 v79.0.0
 	github.com/joho/godotenv v1.5.1
+	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
+	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5
 	github.com/samber/lo v1.52.0
+	github.com/sirupsen/logrus v1.9.3
 	github.com/slack-go/slack v0.17.3
 	github.com/spf13/viper v1.21.0
 	go.mongodb.org/mongo-driver v1.17.6
@@ -21,7 +24,9 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
+	github.com/lestrrat-go/strftime v1.1.1 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

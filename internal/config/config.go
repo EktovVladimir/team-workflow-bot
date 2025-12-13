@@ -17,6 +17,7 @@ type Config struct {
 	GitHubHook GitHubHook `mapstructure:"githubHook"`
 	Jira       Jira       `mapstructure:"jira"`
 	Mongo      Mongo      `mapstructure:"mongo"`
+	Logger     Logger     `mapstructure:"logger"`
 }
 
 type Slack struct {
@@ -44,6 +45,12 @@ type Jira struct {
 type Mongo struct {
 	Connection string `mapstructure:"connection"`
 	DB         string `mapstructure:"db"`
+}
+
+type Logger struct {
+	Dir    string `mapstructure:"dir"`
+	Level  string `mapstructure:"level"`
+	MaxAge int    `mapstructure:"maxAge"`
 }
 
 func Load(appName string) *Config {
@@ -91,4 +98,8 @@ func setDefaults() {
 
 	viper.SetDefault("mongo.connection", "mongodb://localhost:27017")
 	viper.SetDefault("mongo.db", "wf")
+
+	viper.SetDefault("logger.dir", "./logs")
+	viper.SetDefault("logger.level", "info")
+	viper.SetDefault("logger.maxAge", 90)
 }
