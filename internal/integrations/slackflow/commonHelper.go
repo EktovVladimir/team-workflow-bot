@@ -7,13 +7,12 @@ import "regexp"
 // <@U12345678|username>
 // <#C12345678|channelname>
 // Возвращает url/id и текст/имя
-func ParseEscapedLink(text string) (string, string) {
+func ParseEscapedLink(text string) (string, string, bool) {
 	regex := `<[@#]?([^|]+)\|?([^>]*)>`
 	re := regexp.MustCompile(regex)
 	matches := re.FindStringSubmatch(text)
 	if len(matches) == 3 {
-		return matches[1], matches[2]
+		return matches[1], matches[2], true
 	}
-	return "", ""
-
+	return "", "", false
 }

@@ -150,14 +150,16 @@ func (h *Handler) configureUsers(
 	}
 
 	if len(args) == 1 {
-		userId, _ := slackflow.ParseEscapedLink(args[0])
+		userId, _, ok := slackflow.ParseEscapedLink(args[0])
+		if !ok {
+			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, data.channelId, data.userId,
+				"Не удалось распознать пользователя из аргумента: "+args[0])
+			return
+		}
 
 		user, err := h.bag.DB.Repository.GetBySlackId(ctx, userId)
 		if err != nil && !errors.Is(err, db.RecordNotFound) {
-			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(
-				ctx,
-				data.channelId,
-				data.userId,
+			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, data.channelId, data.userId,
 				"Ошибка при запросе БД: "+err.Error())
 			return
 		}

@@ -19,7 +19,7 @@ const (
 	CrPreviewEditConfirm = "confirm"
 )
 
-func GetCrPreviewEditBlocks(cr *models.CodeReviewContext) []slack.Block {
+func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, resetIssueList bool) []slack.Block {
 	validReviewers, notFoundGhReviewers := resolveReviewerNames(cr.Reviewers)
 
 	res := []slack.Block{
@@ -52,7 +52,6 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext) []slack.Block {
 			WithMultiline(true),
 			WithPlaceholder("Список PR'ов. По одному в строке."),
 			WithHint("Можно редактировать список. По одной ссылке на строку. В итоговый тред попадут указанные здесь PR'ы.")))
-	res = append(res, GetMarkdownTextSectionBlock("*Превью PR'ов на код-ревью:* "))
 	res = append(res, GetPullRequestListBlocks(cr.PullRequests...)...)
 
 	res = append(res, slack.NewDividerBlock())
@@ -62,9 +61,14 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext) []slack.Block {
 	})
 	issuesListInputText := strings.Join(issueUrls, "\n")
 
+	issueListBlockId := GetBlockId(CrPreviewEdit, IssueRawListField)
+	if resetIssueList {
+		issueListBlockId = GetBlockIdWithRandSuffix(CrPreviewEdit, IssueRawListField)
+	}
+
 	res = append(res,
 		GetTextInputBlock(
-			GetBlockId(CrPreviewEdit, IssueRawListField),
+			issueListBlockId,
 			GetActionId(CrPreviewEdit, IssueRawListField),
 			"Задачи",
 			WithDispatchAction(true),
@@ -72,7 +76,6 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext) []slack.Block {
 			WithMultiline(true),
 			WithPlaceholder("Список URL задач. По одному в строке."),
 			WithHint("Можно редактировать список. По одной ссылке на строку. В итоговый тред попадут указанные здесь задачи.")))
-	res = append(res, GetMarkdownTextSectionBlock("*Превью задач:* "))
 	res = append(res, GetIssueListBlocks(cr.Issues...)...)
 
 	return res
@@ -83,9 +86,12 @@ func GetCrThreadBlocks(cr *models.CodeReviewContext) []slack.Block {
 
 	res = append(res, GetReviewersBlocks(cr.Reviewers)...)
 	res = append(res, slack.NewDividerBlock())
+	res = append(res, GetMarkdownTextSectionBlock("*Pull requests:*"))
 	res = append(res, GetPullRequestListBlocks(cr.PullRequests...)...)
 	res = append(res, slack.NewDividerBlock())
+	res = append(res, GetMarkdownTextSectionBlock("*Issues:*"))
 	res = append(res, GetIssueListBlocks(cr.Issues...)...)
+	res = append(res, slack.NewDividerBlock())
 
 	requesterSlackName := cr.Requester.SlackId
 	contextText := fmt.Sprintf("Создано через бота по запросу <@%s>", requesterSlackName)
@@ -95,8 +101,8 @@ func GetCrThreadBlocks(cr *models.CodeReviewContext) []slack.Block {
 	return res
 }
 
-func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext) []slack.Block {
-	inputs := GetCrPreviewEditBlocks(cr)
+func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext, resetIssueList bool) []slack.Block {
+	inputs := GetCrPreviewEditBlocks(cr, resetIssueList)
 
 	cancelButton := slack.NewButtonBlockElement(
 		GetActionId(CrPreviewEdit, CrPreviewEditCancel),
@@ -140,8 +146,9 @@ func GetIssueListBlocks(issues ...*models.IssueInfo) []slack.Block {
 
 	for _, issue := range issues {
 		text := fmt.Sprintf(
-			":jira: <%s|%s>",
+			":jira: <%s|%s - %s>",
 			issue.Ref.ToUrl(),
+			issue.Ref.Number,
 			issue.Title)
 
 		res = append(res, GetMarkdownTextSectionBlock(text))
@@ -155,7 +162,7 @@ func GetReviewersBlocks(reviewers []*models.UserRef) []slack.Block {
 
 	reviewersText := strings.Join(lo.Map(validNames, func(s string, _ int) string {
 		return fmt.Sprintf("<@%s>", s)
-	}), ", ")
+	}), " ")
 
 	res := []slack.Block{
 		GetMarkdownTextSectionBlock(fmt.Sprintf("*#CR* %s", reviewersText)),

@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"team-workflow-bot/internal/bag"
+	"team-workflow-bot/internal/integrations/slackflow"
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
 
@@ -24,8 +25,7 @@ const (
 
 // Золотистый
 type retriever interface {
-	CollectCodeReviewContextFromSlack(ctx context.Context, request *models.RequestRef) (*models.CodeReviewContext, error)
-	CollectCodeReviewContextFromSlackLite(ctx context.Context, request *models.RequestRef) (*models.CodeReviewContext, error)
+	CollectCodeReviewContextFromSlack(ctx context.Context, request *models.CodeReviewCollectRequest) (*models.CodeReviewContext, error)
 }
 
 type Handler struct {
@@ -55,31 +55,19 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, evt *socketmode.E
 
 	args := strings.Fields(cmd.Text)
 
-	if len(args) == 0 {
-		//TODO модал или эфемер с инпутами
-
-		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
-			"Временно не поддерживается. Используй `/servit cr <pr_url1> ... <pr_urlN>`")
-
-		return
-	}
-
-	prRefs := lo.FilterMap(args, func(arg string, i int) (*models.PullRequestRef, bool) {
-		return models.ParsePullRequestRefFromUrl(arg)
-	})
-
-	if len(prRefs) == 0 {
-		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
-			"Не удалось распознать ни одного валидного URL ПРа.")
-		return
-	}
+	prRefs := getParsedFromUrlPullRequestRefs(args)
+	issueRefs := getParsedFromUrlIssueRefs(args)
+	reviewerRefs := getParsedFromFormatUserRefs(args)
 
 	requester := &models.UserRef{
 		SlackId: cmd.UserID,
 	}
-	request := &models.RequestRef{
-		PullRequests: prRefs,
+
+	request := &models.CodeReviewCollectRequest{
 		Requester:    requester,
+		Reviewers:    reviewerRefs,
+		PullRequests: prRefs,
+		Issues:       issueRefs,
 	}
 
 	crContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, request)
@@ -90,15 +78,16 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, evt *socketmode.E
 		return
 	}
 
-	//TODO пытаемся сохранить в БД юзеров?
+	//TODO пытаемся сохранить в БД новых юзеров?
+
+	notificationText := fmt.Sprintf("Превью #CR треда %s", crContext.Key)
 
 	_, _, _, err = client.SendMessageContext(
 		ctx,
 		cmd.ChannelID,
-		//TODO текст уведомления
-		slack.MsgOptionText("Превью запроса код-ревью", false),
+		slack.MsgOptionText(notificationText, false),
 		slack.MsgOptionPostEphemeral(cmd.UserID),
-		slack.MsgOptionBlocks(slackviews.GetCrPreviewEditAndConfirmBlocks(crContext)...))
+		slack.MsgOptionBlocks(slackviews.GetCrPreviewEditAndConfirmBlocks(crContext, false)...))
 }
 
 func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, callback slack.InteractionCallback) {
@@ -113,12 +102,21 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 	channelId := callback.Channel.ID
 	userId := callback.User.ID
 
-	if actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditConfirm) {
+	var (
+		crPreviewSubmitActionId    = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditConfirm)
+		crPreviewCancelActionId    = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditCancel)
+		crPreviewPrListActionId    = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
+		crPreviewIssueListActionId = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.IssueRawListField)
+	)
+
+	if actionId == crPreviewSubmitActionId {
 		client.Ack(*evt.Request)
 
 		request := getRequestRefFromPreviewEdit(callback.BlockActionState.Values, userId)
+		request.DisableCollectReviewersFromPr = true
+		request.DisableCollectIssuesFromPr = true
 
-		crContext, err := h.retriever.CollectCodeReviewContextFromSlackLite(ctx, request)
+		crContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, request)
 		if err != nil {
 			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, channelId, callback.User.ID,
 				fmt.Sprintf("Ошибка при сборе контекста код-ревью: %s", err.Error()))
@@ -127,8 +125,10 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 
 		messageBlocks := slackviews.GetCrThreadBlocks(crContext)
 
+		notificationText := fmt.Sprintf("#CR от <@%s> по задаче %s", userId, crContext.Key)
+
 		options := []slack.MsgOption{
-			slack.MsgOptionText("Запрос код-ревью", false),
+			slack.MsgOptionText(notificationText, false),
 			slack.MsgOptionBlocks(messageBlocks...),
 			slack.MsgOptionMetadata(getSlackMetaData(crThreadCreatedMetaEventType, crContext)),
 		}
@@ -140,7 +140,10 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 			log.Println("Failed to get Slack user info:", err)
 		}
 
-		if userProfile != nil {
+		//TODO конфиг или доп.опция
+		useRequesterIdentity := false
+
+		if useRequesterIdentity && userProfile != nil {
 			options = append(options,
 				slack.MsgOptionIconURL(userProfile.Image192),
 				slack.MsgOptionUsername(userProfile.RealName))
@@ -158,19 +161,23 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 		return
 	}
 
-	if actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditCancel) {
+	if actionId == crPreviewCancelActionId {
 		_, _, _ = sl.PostMessage(channelId, slack.MsgOptionDeleteOriginal(responseUrl))
 
 		return
 	}
 
-	if actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.IssueRawListField) ||
-		actionId == slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField) {
+	if actionId == crPreviewPrListActionId || actionId == crPreviewIssueListActionId {
+
 		client.Ack(*evt.Request)
 
 		request := getRequestRefFromPreviewEdit(callback.BlockActionState.Values, userId)
+		request.DisableCollectReviewersFromPr = true
 
-		crContext, err := h.retriever.CollectCodeReviewContextFromSlackLite(ctx, request)
+		//TODO false для crPreviewPrListActionId, но сначала разобраться с обновлением инпутов
+		request.DisableCollectIssuesFromPr = true
+
+		crContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, request)
 		if err != nil {
 			log.Println("Failed to collect code review context:", err)
 			return
@@ -178,7 +185,7 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 
 		_, _, err = sl.PostMessage(channelId,
 			slack.MsgOptionReplaceOriginal(responseUrl),
-			slack.MsgOptionBlocks(slackviews.GetCrPreviewEditAndConfirmBlocks(crContext)...))
+			slack.MsgOptionBlocks(slackviews.GetCrPreviewEditAndConfirmBlocks(crContext, false)...))
 
 		return
 	}
@@ -189,7 +196,7 @@ func (h *Handler) isCommandApplicable(cmd slack.SlashCommand) bool {
 		cmd.Command == "/servit" && strings.HasPrefix(cmd.Text, "cr")
 }
 
-func getRequestRefFromPreviewEdit(state slackviews.ViewStateValues, userId string) *models.RequestRef {
+func getRequestRefFromPreviewEdit(state slackviews.ViewStateValues, userId string) *models.CodeReviewCollectRequest {
 	requesterRef := &models.UserRef{
 		SlackId: userId,
 	}
@@ -202,21 +209,44 @@ func getRequestRefFromPreviewEdit(state slackviews.ViewStateValues, userId strin
 	})
 
 	prUrls := slackviews.GetMultilineInputText(state, slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
-	prRefs := lo.FilterMap(prUrls, func(arg string, i int) (*models.PullRequestRef, bool) {
-		return models.ParsePullRequestRefFromUrl(arg)
-	})
+	prRefs := getParsedFromUrlPullRequestRefs(prUrls)
 
 	issuesUrls := slackviews.GetMultilineInputText(state, slackviews.CrPreviewEdit, slackviews.IssueRawListField)
-	issueRefs := lo.FilterMap(issuesUrls, func(arg string, i int) (*models.IssueRef, bool) {
-		return models.ParseIssueRefFromUrl(arg)
-	})
+	issueRefs := getParsedFromUrlIssueRefs(issuesUrls)
 
-	return &models.RequestRef{
+	return &models.CodeReviewCollectRequest{
 		PullRequests: prRefs,
 		Issues:       issueRefs,
 		Requester:    requesterRef,
 		Reviewers:    reviewerRefs,
 	}
+}
+
+func getParsedFromUrlPullRequestRefs(prUrls []string) []*models.PullRequestRef {
+	uniqUrls := lo.Uniq(prUrls)
+	return lo.FilterMap(uniqUrls, func(arg string, i int) (*models.PullRequestRef, bool) {
+		return models.ParsePullRequestRefFromUrl(arg)
+	})
+}
+
+func getParsedFromUrlIssueRefs(issueUrls []string) []*models.IssueRef {
+	uniqUrls := lo.Uniq(issueUrls)
+	return lo.FilterMap(uniqUrls, func(arg string, i int) (*models.IssueRef, bool) {
+		return models.ParseIssueRefFromUrl(arg)
+	})
+}
+
+func getParsedFromFormatUserRefs(slackUserMention []string) []*models.UserRef {
+	uniqMentions := lo.Uniq(slackUserMention)
+	return lo.FilterMap(uniqMentions, func(arg string, i int) (*models.UserRef, bool) {
+		userId, _, ok := slackflow.ParseEscapedLink(arg)
+		if !ok {
+			return nil, false
+		}
+		return &models.UserRef{
+			SlackId: userId,
+		}, true
+	})
 }
 
 func getSlackMetaData(eventType string, context *models.CodeReviewContext) slack.SlackMetadata {

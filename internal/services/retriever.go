@@ -21,6 +21,7 @@ var ErrDbUserNotFoundButOtherData = errors.New("db user not found but other data
 var ErrUserRefIsEmpty = errors.New("user reference is empty")
 var ErrGithubUserPublicEmailNotFound = errors.New("github user has no public email")
 var ErrSlackUserPublicEmailNotFound = errors.New("slack user has no public email")
+var ErrNothingToCollect = errors.New("nothing to collect")
 
 type Retriever struct {
 	bag *bag.DependenciesBag
@@ -32,106 +33,71 @@ func NewRetriever(bag *bag.DependenciesBag) *Retriever {
 	}
 }
 
-func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, request *models.RequestRef) (*models.CodeReviewContext, error) {
-
-	//TODO Пока что работаем через ПРы.
-	if len(request.PullRequests) == 0 /* && len(request.Issues) == 0 */ {
-		return nil, ErrNoPRsOrIssues
-	}
-
-	gh := r.bag.Client.GitHub
-
-	dbRequester, _ := r.GetUserBySlackIdSafe(ctx, request.Requester)
-
-	prRefs := getUniqPullRequestRefs(request.PullRequests...)
-	prInfos := make([]*models.PullRequestInfo, 0)
-	for _, prRef := range prRefs {
-		ghPr, _, err := gh.PullRequests.Get(ctx, prRef.Owner, prRef.Repo, prRef.Number)
-		if err != nil {
-			return nil, err
-		}
-
-		prInfo := githubflow.MapPullRequestInfoFromResponse(ghPr)
-		prInfos = append(prInfos, prInfo)
-	}
-
-	//Собираем ревьюверов из ПРов
-	reviewerGhLogins := lo.FlatMap(prInfos, func(pr *models.PullRequestInfo, _ int) []string {
-		return pr.Reviewers
-	})
-
-	//Ревьюверы из запроса
-	reviewerGhLogins = append(reviewerGhLogins, lo.Map(request.Reviewers, func(r *models.UserRef, _ int) string {
-		return r.GithubLogin
-	})...)
-
-	reviewerGhLogins = lo.Uniq(reviewerGhLogins)
-
-	dbReviewers := r.GetUserListByGithubLoginsSafe(ctx, reviewerGhLogins)
-	reviewerRefs := lo.Map(dbReviewers, func(u *models.User, _ int) *models.UserRef {
-		return u.ToRef()
-	})
-
-	headBrunchNames := lo.Map(prInfos, func(pr *models.PullRequestInfo, _ int) string {
-		return pr.HeadBranch
-	})
-
-	mainIssueKeys := getUniqKeysFromMessages(headBrunchNames...)
-	issueKeys := r.GetIssueKeysFromCommitMessages(ctx, request.PullRequests...)
-
-	issues, err := r.bag.Services.Jira.GetIssueInfoList(ctx, lo.Union(mainIssueKeys, issueKeys))
-	if err != nil {
-		return nil, err
-	}
+func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, request *models.CodeReviewCollectRequest) (*models.CodeReviewContext, error) {
+	issueKeys := request.GetIssueKeys()
 
 	res := &models.CodeReviewContext{
-		Requester: &models.UserRef{
-			GithubLogin: dbRequester.GitHubLogin,
-			SlackId:     dbRequester.SlackId,
-		},
-		Reviewers:    reviewerRefs,
-		PullRequests: prInfos,
-		Issues:       issues,
+		Requester: request.Requester,
+		Reviewers: request.Reviewers,
 	}
 
-	return res, nil
-}
-
-func (r *Retriever) CollectCodeReviewContextFromSlackLite(ctx context.Context, request *models.RequestRef) (*models.CodeReviewContext, error) {
-
-	if len(request.PullRequests) == 0 {
-		return nil, ErrNoPRsOrIssues
+	prInfos, err := r.getPullRequestInfoList(ctx, request.PullRequests...)
+	if err != nil {
+		return res, err
 	}
 
-	gh := r.bag.Client.GitHub
+	res.PullRequests = prInfos
 
-	prRefs := getUniqPullRequestRefs(request.PullRequests...)
-	prInfos := make([]*models.PullRequestInfo, 0)
-	for _, prRef := range prRefs {
-		ghPr, _, err := gh.PullRequests.Get(ctx, prRef.Owner, prRef.Repo, prRef.Number)
-		if err != nil {
-			return nil, err
+	if len(prInfos) != 0 {
+		if !request.DisableCollectReviewersFromPr {
+			reviewerGhLogins := lo.Uniq(lo.FlatMap(prInfos, func(pr *models.PullRequestInfo, _ int) []string {
+				return pr.Reviewers
+			}))
+			dbReviewers := r.GetUserListByGithubLoginsSafe(ctx, reviewerGhLogins)
+			reviewersFromGhRefs := lo.Map(dbReviewers, func(u *models.User, _ int) *models.UserRef {
+				return u.ToRef()
+			})
+
+			//Добавляем ревьюверов к общему списку и удаляем дубликаты по slackId,
+			//но оставляем githubLogin, если slackId нет
+			res.Reviewers = append(res.Reviewers, reviewersFromGhRefs...)
+			res.Reviewers = lo.UniqBy(res.Reviewers, func(r *models.UserRef) string {
+				if r.SlackId != "" {
+					return r.SlackId
+				}
+				return r.GithubLogin
+			})
 		}
 
-		prInfo := githubflow.MapPullRequestInfoFromResponse(ghPr)
-		prInfos = append(prInfos, prInfo)
-	}
+		headBrunchNames := lo.Map(prInfos, func(pr *models.PullRequestInfo, _ int) string {
+			return pr.HeadBranch
+		})
+		issueKeysFromBranches := getUniqKeysFromMessages(headBrunchNames...)
 
-	issueKeys := lo.Map(request.Issues, func(issueRef *models.IssueRef, _ int) string {
-		return issueRef.Number
-	})
+		// Нужно задать некий ключ код-ревью, по которому сможем объединить ПРы из разных репозиториев.
+		// И по этому ключу потом искать существующее код-ревью в БД.
+		// Если можем, используем номер первой задачи из названия ветки.
+		// Если ветка не содержит номер, то просто используем название ветки.
+		if len(issueKeysFromBranches) != 0 {
+			res.Key = issueKeysFromBranches[0]
+		} else {
+			res.Key = headBrunchNames[0]
+		}
+
+		if !request.DisableCollectIssuesFromPr {
+			issueKeysFromCommits := r.GetIssueKeysFromCommitMessages(ctx, request.PullRequests...)
+
+			//Добавляем задачи к общему списку и удаляем дубликаты
+			issueKeys = lo.Union(issueKeys, issueKeysFromBranches, issueKeysFromCommits)
+		}
+	}
 
 	issues, err := r.bag.Services.Jira.GetIssueInfoList(ctx, issueKeys)
 	if err != nil {
-		return nil, err
+		return res, err
 	}
 
-	res := &models.CodeReviewContext{
-		Requester:    request.Requester,
-		Reviewers:    request.Reviewers,
-		PullRequests: prInfos,
-		Issues:       issues,
-	}
+	res.Issues = issues
 
 	return res, nil
 }
@@ -287,6 +253,21 @@ func (r *Retriever) GetIssueKeysFromCommitMessages(ctx context.Context, prRefs .
 	}
 
 	return getUniqKeysFromMessages(messages...)
+}
+
+func (r *Retriever) getPullRequestInfoList(ctx context.Context, prRefs ...*models.PullRequestRef) ([]*models.PullRequestInfo, error) {
+	uniqPrRefs := getUniqPullRequestRefs(prRefs...)
+	prInfos := make([]*models.PullRequestInfo, 0)
+	for _, prRef := range uniqPrRefs {
+		ghPr, _, err := r.bag.Client.GitHub.PullRequests.Get(ctx, prRef.Owner, prRef.Repo, prRef.Number)
+		if err != nil {
+			return nil, err
+		}
+
+		prInfo := githubflow.MapPullRequestInfoFromResponse(ghPr)
+		prInfos = append(prInfos, prInfo)
+	}
+	return prInfos, nil
 }
 
 // TODO в утилиты
