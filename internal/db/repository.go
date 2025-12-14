@@ -197,16 +197,10 @@ func (r *Repository) GetCodeReviewThreadByPullRequestRef(ctx context.Context, re
 }
 
 func (r *Repository) UpdateCodeReviewThread(ctx context.Context, item *models.CodeReviewThread) error {
-
-	updCrt := *item
-	updCrt.Id = ""
-
-	//TODO обновлять по ID
-	_, err := r.db.Collection(CodeReviewThreadsCollection).UpdateOne(
+	_, err := r.db.Collection(CodeReviewThreadsCollection).ReplaceOne(
 		ctx,
-		bson.M{"context.key": item.Context.KeyedIssue},
-		bson.M{"$set": &updCrt},
+		bson.M{"_id": item.Id},
+		item,
 	)
-
 	return err
 }

@@ -18,7 +18,12 @@ import (
 	"github.com/slack-go/slack"
 )
 
-func (h *Handler) HandlePullRequestEvent(ctx context.Context, event *github.PullRequestEvent) {
+func (h *Handler) HandlePullRequestEvent(_ context.Context, event *github.PullRequestEvent) {
+
+	// Создадим новый контекст, так как исходный контекст уже может быть отменен.
+	// TODO нужно разобраться почему так происходит и можно ли этого избежать.
+	ctx := context.Background()
+
 	action := event.GetAction()
 
 	prInfo := githubflow.MapPullRequestInfoFromResponse(event.PullRequest)
@@ -64,7 +69,7 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 		return
 	}
 
-	oldPrInfo, updIndex, found := lo.FindIndexOf(dbCrThread.Context.PullRequests, func(item *models.PullRequestInfo) bool {
+	_, updIndex, found := lo.FindIndexOf(dbCrThread.Context.PullRequests, func(item *models.PullRequestInfo) bool {
 		return item.RefKey == prInfo.RefKey
 	})
 	if !found {
@@ -72,7 +77,7 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 		return
 	}
 
-	dbCrThread.Context.PullRequests[updIndex] = oldPrInfo
+	dbCrThread.Context.PullRequests[updIndex] = prInfo
 
 	threadRef := dbCrThread.Thread
 
@@ -115,4 +120,12 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 			logrus.Error("Failed to post deploy date picker: ", err)
 		}
 	}
+
+	err = h.bag.DB.Repository.UpdateCodeReviewThread(ctx, dbCrThread)
+	if err != nil {
+		logrus.Errorf("Failed to update code review thread in DB: %v", err)
+		//TODO эфемерка?
+		return
+	}
+
 }
