@@ -45,6 +45,7 @@ func (r *Repository) UpdateUser(ctx context.Context, item *models.User) error {
 	updUser := *item
 	updUser.Id = ""
 
+	//TODO обновлять по ID
 	_, err := r.db.Collection(UsersCollection).UpdateOne(
 		ctx,
 		bson.M{"slack_id": item.SlackId},
@@ -200,6 +201,7 @@ func (r *Repository) UpdateCodeReviewThread(ctx context.Context, item *models.Co
 	updCrt := *item
 	updCrt.Id = ""
 
+	//TODO обновлять по ID
 	_, err := r.db.Collection(CodeReviewThreadsCollection).UpdateOne(
 		ctx,
 		bson.M{"context.key": item.Context.KeyedIssue},

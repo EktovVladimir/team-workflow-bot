@@ -2,6 +2,8 @@ package jiraflow
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"team-workflow-bot/internal/models"
 
 	"github.com/andygrunwald/go-jira"
@@ -37,13 +39,33 @@ func (s *Service) GetIssueInfo(ctx context.Context, issueKey string) (*models.Is
 func (s *Service) GetIssueInfoList(ctx context.Context, issueKeys []string) ([]*models.IssueInfo, error) {
 	res := make([]*models.IssueInfo, 0)
 	issueKeys = lo.Uniq(issueKeys)
-	for _, key := range issueKeys {
-		issue, err := s.GetIssueInfo(ctx, key)
-		if err != nil {
-			return nil, err
-		}
 
-		res = append(res, issue)
+	wg := sync.WaitGroup{}
+	mu := sync.Mutex{}
+	errs := make([]error, 0)
+
+	for _, key := range issueKeys {
+		k := key
+		wg.Add(1)
+		go func(issueKey string) {
+			defer wg.Done()
+			issue, err := s.GetIssueInfo(ctx, issueKey)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+				return
+			}
+			mu.Lock()
+			res = append(res, issue)
+			mu.Unlock()
+		}(k)
+	}
+
+	wg.Wait()
+
+	if len(errs) > 0 {
+		return res, errors.Join(errs...)
 	}
 	return res, nil
 }

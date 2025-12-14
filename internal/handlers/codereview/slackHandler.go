@@ -20,15 +20,21 @@ const (
 	handlerNameMetaValue         = "codereview.Handler"
 )
 
+// TODO конфиг
+const (
+	sendAsModal = true
+)
+
 func (h *Handler) HandleSlackSlashCommand(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, cmd slack.SlashCommand) {
 	if !h.isCommandApplicable(cmd) {
 		return
 	}
 
-	//TODO конфиг
-	const (
-		sendAsModal = true
-	)
+	log := logrus.WithField("command", cmd.Command).
+		WithField("user", cmd.UserID).
+		WithField("channel", cmd.ChannelID)
+
+	log.Infof("Command %s recieved with text: %s", cmd.Command, cmd.Text)
 
 	client.Ack(*evt.Request)
 
@@ -49,24 +55,44 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, evt *socketmode.E
 		Issues:       issueRefs,
 	}
 
+	triggerId := cmd.TriggerID
+	viewId := ""
+
+	if sendAsModal {
+		viewRs, err := client.OpenViewContext(
+			ctx,
+			triggerId,
+			slackviews.GetCrPreviewLoadingModal())
+		if err != nil {
+			log.Errorf("Failed to open modal view: %v", err)
+			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
+				fmt.Sprintf("Ошибка при открытии модального окна превью код-ревью: %s", err.Error()))
+			return
+		}
+
+		viewId = viewRs.View.ID
+	}
+
+	log.Debug("Collection code review context...")
+
 	crContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, request)
 
 	if err != nil {
+		log.Errorf("Failed to collect code review context: %v", err)
 		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
 			fmt.Sprintf("Ошибка при сборе контекста код-ревью: %s", err.Error()))
 		return
 	}
 
-	//TODO пытаемся сохранить в БД новых юзеров?
+	log.Debug("Collection code review context completed.")
 
 	if sendAsModal {
-		triggerId := cmd.TriggerID
-
-		_, err = client.OpenViewContext(
+		_, err = client.UpdateViewContext(
 			ctx,
-			triggerId,
-			slackviews.GetCrPreviewModal(crContext, cmd.ChannelID, false))
+			slackviews.GetCrPreviewModal(crContext, cmd.ChannelID, false),
+			"", "", viewId)
 		if err != nil {
+			log.Errorf("Failed to open modal view: %v", err)
 			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
 				fmt.Sprintf("Ошибка при открытии модального окна превью код-ревью: %s", err.Error()))
 			return
@@ -82,6 +108,7 @@ func (h *Handler) HandleSlackSlashCommand(ctx context.Context, evt *socketmode.E
 			slack.MsgOptionBlocks(slackviews.GetCrPreviewEditAndConfirmBlocks(crContext, false)...))
 
 		if err != nil {
+			log.Errorf("Failed to send message to user: %v", err)
 			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
 				fmt.Sprintf("Ошибка при отправке превью код-ревью: %s", err.Error()))
 			return

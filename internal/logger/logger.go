@@ -40,7 +40,9 @@ func Init(cfg *config.Config) {
 	))
 
 	logrus.SetFormatter(&logrus.TextFormatter{
-		ForceColors: true,
+		ForceColors:     true,
+		FullTimestamp:   true,
+		TimestampFormat: time.DateTime,
 	})
 	logrus.SetOutput(os.Stdout)
 }

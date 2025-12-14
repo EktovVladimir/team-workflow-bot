@@ -9,6 +9,8 @@ import (
 	"team-workflow-bot/internal/integrations/githubflow"
 	"team-workflow-bot/internal/models"
 
+	"sync"
+
 	"github.com/google/go-github/v79/github"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
@@ -239,33 +241,70 @@ func (r *Retriever) GetGithubUserBySlackId(ctx context.Context, slackId string) 
 }
 
 func (r *Retriever) GetIssueKeysFromCommitMessages(ctx context.Context, prRefs ...*models.PullRequestRef) []string {
-	messages := make([]string, 0)
-	for _, prRef := range prRefs {
-		ghCommits, err := r.bag.Services.Github.GetAllCommits(ctx, prRef)
-		if err != nil {
-			logrus.Warning("Ignoring error while retrieving commits for PR:", err)
-			continue
-		}
+	uniqPrRefs := getUniqPullRequestRefs(prRefs...)
 
-		messages = append(messages, lo.Map(ghCommits, func(c *models.CommitInfo, i int) string {
-			return c.Message
-		})...)
+	messages := make([]string, 0, len(uniqPrRefs))
+
+	wg := sync.WaitGroup{}
+	mu := sync.Mutex{}
+
+	for _, prRef := range uniqPrRefs {
+		wg.Add(1)
+		go func(ref *models.PullRequestRef) {
+			defer wg.Done()
+			ghCommits, err := r.bag.Services.Github.GetAllCommits(ctx, ref)
+			if err != nil {
+				logrus.Warning("Ignoring error while retrieving commits for PR:", err)
+				return
+			}
+
+			msgs := lo.Map(ghCommits, func(c *models.CommitInfo, _ int) string {
+				return c.Message
+			})
+			mu.Lock()
+			messages = append(messages, msgs...)
+			mu.Unlock()
+		}(prRef)
 	}
+
+	wg.Wait()
 
 	return getUniqKeysFromMessages(messages...)
 }
 
 func (r *Retriever) getPullRequestInfoList(ctx context.Context, prRefs ...*models.PullRequestRef) ([]*models.PullRequestInfo, error) {
 	uniqPrRefs := getUniqPullRequestRefs(prRefs...)
-	prInfos := make([]*models.PullRequestInfo, 0)
-	for _, prRef := range uniqPrRefs {
-		ghPr, _, err := r.bag.Client.GitHub.PullRequests.Get(ctx, prRef.Owner, prRef.Repo, prRef.Number)
-		if err != nil {
-			return nil, err
-		}
+	prInfos := make([]*models.PullRequestInfo, 0, len(uniqPrRefs))
 
-		prInfo := githubflow.MapPullRequestInfoFromResponse(ghPr)
-		prInfos = append(prInfos, prInfo)
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		errs []error
+	)
+
+	for _, prRef := range uniqPrRefs {
+		wg.Add(1)
+		go func(ref *models.PullRequestRef) {
+			defer wg.Done()
+			ghPr, _, err := r.bag.Client.GitHub.PullRequests.Get(ctx, ref.Owner, ref.Repo, ref.Number)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+				return
+			}
+
+			prInfo := githubflow.MapPullRequestInfoFromResponse(ghPr)
+			mu.Lock()
+			prInfos = append(prInfos, prInfo)
+			mu.Unlock()
+		}(prRef)
+	}
+
+	wg.Wait()
+
+	if len(errs) > 0 {
+		return prInfos, errors.Join(errs...)
 	}
 	return prInfos, nil
 }
@@ -291,8 +330,8 @@ func getUniqKeysFromMessages(messages ...string) []string {
 	return lo.Uniq(keys)
 }
 
-func getUniqPullRequestRefs(prRefs ...*models.PullRequestRef) []models.PullRequestRef {
-	return lo.Uniq(lo.Map(prRefs, func(pr *models.PullRequestRef, _ int) models.PullRequestRef {
-		return *pr
-	}))
+func getUniqPullRequestRefs(prRefs ...*models.PullRequestRef) []*models.PullRequestRef {
+	return lo.UniqBy(prRefs, func(r *models.PullRequestRef) string {
+		return r.ToKey()
+	})
 }

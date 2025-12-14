@@ -3,6 +3,7 @@ package slackutils
 import (
 	"strings"
 	"team-workflow-bot/pkg/commonutils"
+	"time"
 
 	"github.com/samber/lo"
 	"github.com/slack-go/slack"
@@ -63,6 +64,22 @@ func GetMultiSelectValues(vs ViewStateValues, base string, field string) []strin
 
 	objects := input.SelectedOptions
 	return GetStringValuesFromObjects(objects...)
+}
+
+// GetDatePickerValue возвращает выбранную дату в datepicker в виде time.Time.
+// Если значение не найдено, возвращается текущее время.
+func GetDatePickerValue(vs ViewStateValues, base string, field string) time.Time {
+	now := time.Now()
+	input, _, _, ok := GetViewStateValue(vs, base, field)
+	if !ok {
+		return now
+	}
+
+	res, err := time.Parse(time.DateOnly, input.SelectedDate)
+	if err != nil {
+		return now
+	}
+	return res
 }
 
 func GetViewStateValue(vs ViewStateValues, base string, field string) (slack.BlockAction, string, string, bool) {

@@ -155,6 +155,24 @@ func GetCrPreviewModal(cr *models.CodeReviewContext, channelId string, resetIssu
 	}
 }
 
+func GetCrPreviewLoadingModal() slack.ModalViewRequest {
+	blocks := []slack.Block{
+		slackutils.GetMarkdownTextSectionBlock(":loading1: Секундочку, работаем..."),
+	}
+	//blocks = append(blocks, GetCrPreviewEditBlocks(&models.CodeReviewContext{}, false)...)
+
+	return slack.ModalViewRequest{
+		CallbackID: slackutils.GetCallbackId(CrPreviewEditModal),
+		Type:       slack.VTModal,
+		Title:      slackutils.GetEmojiPlainTextObject("Создание треда #CR"),
+		Submit:     slackutils.GetSimplePlainTextObject("Подтвердить"),
+		Close:      slackutils.GetSimplePlainTextObject("Отмена"),
+		Blocks: slack.Blocks{
+			BlockSet: blocks,
+		},
+	}
+}
+
 func GetPullRequestListBlocks(prs ...*models.PullRequestInfo) []slack.Block {
 	res := make([]slack.Block, 0)
 
