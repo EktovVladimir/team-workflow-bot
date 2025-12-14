@@ -1,0 +1,63 @@
+package models
+
+const (
+	//TODO более гибкие роли и права
+	RoleAdmin     = "admin"
+	RoleModerator = "moderator"
+	RoleUser      = "user"
+)
+
+const (
+	CodeReviewStatusOpen     = "open"
+	CodeReviewStatusClosed   = "closed"
+	CodeReviewStatusCanceled = "canceled"
+)
+
+type User struct {
+	Id              string   `bson:"_id,omitempty"`
+	Email           string   `bson:"email"`
+	SlackName       string   `bson:"slack_name"`
+	SlackId         string   `bson:"slack_id"`
+	GitHubLogin     string   `bson:"github_login"`
+	AlternateLogins []string `bson:"alternate_logins,omitempty"`
+	Roles           []string `bson:"roles,omitempty"`
+	Teams           []string `bson:"teams,omitempty"`
+}
+
+func (u *User) ToRef() *UserRef {
+	return &UserRef{
+		SlackId:     u.SlackId,
+		GithubLogin: u.GitHubLogin,
+	}
+}
+
+func (u *User) HasRole(roleName string) bool {
+	for _, r := range u.Roles {
+		if r == roleName {
+			return true
+		}
+	}
+	return false
+}
+
+type Role struct {
+	Id          string `bson:"_id,omitempty"`
+	Name        string `bson:"name"`
+	Description string `bson:"description,omitempty"`
+}
+
+type Team struct {
+	Id          string `bson:"_id,omitempty"`
+	Name        string `bson:"name"`
+	Description string `bson:"description,omitempty"`
+	IssueRegex  string `bson:"issue_regex,omitempty"`
+	Channel     string `bson:"channel,omitempty"`
+}
+
+type CodeReviewThread struct {
+	Id          string             `bson:"_id,omitempty"`
+	Thread      *ThreadRef         `bson:"thread"`
+	MessageLink string             `bson:"message_link,omitempty"`
+	Status      string             `bson:"status,omitempty"`
+	Context     *CodeReviewContext `bson:"context"`
+}
