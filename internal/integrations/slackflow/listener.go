@@ -52,9 +52,7 @@ func (l *Listener) Run(ctx context.Context) error {
 		socketModeHandler.HandleInteraction(slack.InteractionTypeViewSubmission, l.viewSubmissionEventMiddleware(ctx, handler))
 	}
 
-	for _, handler := range l.cfg.directMessageHandlers {
-		socketModeHandler.HandleEvents(slackevents.Message, l.directMessageEventMiddleware(ctx, handler))
-	}
+	socketModeHandler.Handle(socketmode.EventTypeEventsAPI, l.eventApiMiddleware(ctx))
 
 	return socketModeHandler.RunEventLoopContext(ctx)
 }
@@ -89,19 +87,33 @@ func (l *Listener) viewSubmissionEventMiddleware(ctx context.Context, handler SL
 	}
 }
 
-func (l *Listener) directMessageEventMiddleware(ctx context.Context, handler SlackDirectMessageEventHandler) socketmode.SocketmodeHandlerFunc {
+func (l *Listener) eventApiMiddleware(ctx context.Context) socketmode.SocketmodeHandlerFunc {
 	return func(evt *socketmode.Event, client *socketmode.Client) {
 		eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
 		if !ok {
 			return
 		}
-		innerEvent := eventsAPIEvent.InnerEvent
-		messageEvent, ok := innerEvent.Data.(*slackevents.MessageEvent)
-		if !ok {
-			return
-		}
-		if messageEvent.ChannelType == "im" {
-			handler.HandleSlackDirectMessageEvent(ctx, evt, client, messageEvent)
+
+		// Можем ответить сразу, так как это не интерактивный ивент
+		client.Ack(*evt.Request)
+
+		switch eventsAPIEvent.Type {
+		case slackevents.CallbackEvent:
+			innerEvent := eventsAPIEvent.InnerEvent
+			switch ev := innerEvent.Data.(type) {
+			case *slackevents.AppMentionEvent:
+				for _, handler := range l.cfg.appMentionHandlers {
+					go handler.HandleSlackAppMentionEvent(ctx, evt, client, ev)
+				}
+			case *slackevents.MessageEvent:
+				if ev.ChannelType == "im" {
+					for _, handler := range l.cfg.directMessageHandlers {
+						go handler.HandleSlackDirectMessageEvent(ctx, evt, client, ev)
+					}
+				}
+			}
+		default:
+			client.Debugf("unsupported Events API event received")
 		}
 	}
 }

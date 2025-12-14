@@ -25,3 +25,7 @@ type SLackViewSubmissionHandler interface {
 type SlackBlockActionHandler interface {
 	HandleSlackBlockAction(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, callback slack.InteractionCallback)
 }
+
+type SlackAppMentionEventHandler interface {
+	HandleSlackAppMentionEvent(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, message *slackevents.AppMentionEvent)
+}
