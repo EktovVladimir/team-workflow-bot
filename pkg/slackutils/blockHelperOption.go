@@ -1,4 +1,4 @@
-package slackviews
+package slackutils
 
 type BlockHelperOption func(cfg *blockHelperOptionConfig)
 

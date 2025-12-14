@@ -9,6 +9,7 @@ import (
 	"team-workflow-bot/internal/integrations/slackflow"
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
+	"team-workflow-bot/pkg/slackutils"
 
 	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
@@ -86,15 +87,15 @@ func (h *Handler) HandleSlackViewSubmission(
 	client *socketmode.Client,
 	callback slack.InteractionCallback) {
 
-	if callback.View.CallbackID == slackviews.GetCallbackId(slackviews.UserEditModal) {
+	if callback.View.CallbackID == slackutils.GetCallbackId(slackviews.UserEditModal) {
 
 		viewStateValues := callback.View.State.Values
 
-		slackId := slackviews.GetSelectedUser(viewStateValues, slackviews.UserEditModal, slackviews.SlackField)
-		email := slackviews.GetInputText(viewStateValues, slackviews.UserEditModal, slackviews.EmailField)
-		githubName := slackviews.GetInputText(viewStateValues, slackviews.UserEditModal, slackviews.GithubField)
-		roles := slackviews.GetMultiSelectValues(viewStateValues, slackviews.UserEditModal, slackviews.RolesField)
-		teams := slackviews.GetMultiSelectValues(viewStateValues, slackviews.UserEditModal, slackviews.TeamsField)
+		slackId := slackutils.GetSelectedUser(viewStateValues, slackviews.UserEditModal, slackviews.SlackField)
+		email := slackutils.GetInputText(viewStateValues, slackviews.UserEditModal, slackviews.EmailField)
+		githubName := slackutils.GetInputText(viewStateValues, slackviews.UserEditModal, slackviews.GithubField)
+		roles := slackutils.GetMultiSelectValues(viewStateValues, slackviews.UserEditModal, slackviews.RolesField)
+		teams := slackutils.GetMultiSelectValues(viewStateValues, slackviews.UserEditModal, slackviews.TeamsField)
 
 		//TODO валидация
 

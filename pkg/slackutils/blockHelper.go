@@ -1,13 +1,13 @@
-package slackviews
+package slackutils
 
 import (
 	"slices"
-	"team-workflow-bot/internal/common"
+	"team-workflow-bot/pkg/commonutils"
 
 	"github.com/slack-go/slack"
 )
 
-type SelectBlockOption = common.Triple[string, *string, *string]
+type SelectBlockOption = commonutils.Triple[string, *string, *string]
 
 func GetUserInputBlock(blockId string, actionId string, label string, options ...BlockHelperOption) *slack.InputBlock {
 	cfg := applyBlockHelperOptions(options...)

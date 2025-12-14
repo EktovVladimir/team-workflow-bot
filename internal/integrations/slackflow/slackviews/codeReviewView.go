@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"team-workflow-bot/internal/models"
+	"team-workflow-bot/pkg/slackutils"
 
 	"github.com/samber/lo"
 	"github.com/slack-go/slack"
@@ -25,11 +26,11 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, resetIssueList bool) [
 	validReviewers, notFoundGhReviewers := resolveReviewerNames(cr.Reviewers)
 
 	res := []slack.Block{
-		GetUserMultiSelectInputBlock(
-			GetBlockId(CrPreviewEdit, ReviewersField),
-			GetActionId(CrPreviewEdit, ReviewersField),
+		slackutils.GetUserMultiSelectInputBlock(
+			slackutils.GetBlockId(CrPreviewEdit, ReviewersField),
+			slackutils.GetActionId(CrPreviewEdit, ReviewersField),
 			"Reviewers",
-			WithInitialValues(validReviewers)),
+			slackutils.WithInitialValues(validReviewers)),
 	}
 
 	notFoundReviewersBlock := getNotValidReviewersContextBlock(notFoundGhReviewers)
@@ -45,15 +46,15 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, resetIssueList bool) [
 	prListInputText := strings.Join(prUrls, "\n")
 
 	res = append(res,
-		GetTextInputBlock(
-			GetBlockId(CrPreviewEdit, PullRequestRawListField),
-			GetActionId(CrPreviewEdit, PullRequestRawListField),
+		slackutils.GetTextInputBlock(
+			slackutils.GetBlockId(CrPreviewEdit, PullRequestRawListField),
+			slackutils.GetActionId(CrPreviewEdit, PullRequestRawListField),
 			"Pull requests",
-			WithDispatchAction(true),
-			WithInitialValue(prListInputText),
-			WithMultiline(true),
-			WithPlaceholder("Список PR'ов. По одному в строке."),
-			WithHint("Можно редактировать список. По одной ссылке на строку. В итоговый тред попадут указанные здесь PR'ы.")))
+			slackutils.WithDispatchAction(true),
+			slackutils.WithInitialValue(prListInputText),
+			slackutils.WithMultiline(true),
+			slackutils.WithPlaceholder("Список PR'ов. По одному в строке."),
+			slackutils.WithHint("Можно редактировать список. По одной ссылке на строку. В итоговый тред попадут указанные здесь PR'ы.")))
 	res = append(res, GetPullRequestListBlocks(cr.PullRequests...)...)
 
 	res = append(res, slack.NewDividerBlock())
@@ -63,22 +64,22 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, resetIssueList bool) [
 	})
 	issuesListInputText := strings.Join(issueUrls, "\n")
 
-	issueListBlockId := GetBlockId(CrPreviewEdit, IssueRawListField)
+	issueListBlockId := slackutils.GetBlockId(CrPreviewEdit, IssueRawListField)
 	if resetIssueList {
-		issueListBlockId = GetBlockIdWithRandSuffix(CrPreviewEdit, IssueRawListField)
+		issueListBlockId = slackutils.GetBlockIdWithRandSuffix(CrPreviewEdit, IssueRawListField)
 	}
 
 	res = append(res,
-		GetTextInputBlock(
+		slackutils.GetTextInputBlock(
 			issueListBlockId,
-			GetActionId(CrPreviewEdit, IssueRawListField),
+			slackutils.GetActionId(CrPreviewEdit, IssueRawListField),
 			"Задачи",
-			WithDispatchAction(true),
-			WithInitialValue(issuesListInputText),
-			WithMultiline(true),
-			WithOptional(true),
-			WithPlaceholder("Список URL задач. По одному в строке."),
-			WithHint("Можно редактировать список. По одной ссылке на строку. В итоговый тред попадут указанные здесь задачи.")))
+			slackutils.WithDispatchAction(true),
+			slackutils.WithInitialValue(issuesListInputText),
+			slackutils.WithMultiline(true),
+			slackutils.WithOptional(true),
+			slackutils.WithPlaceholder("Список URL задач. По одному в строке."),
+			slackutils.WithHint("Можно редактировать список. По одной ссылке на строку. В итоговый тред попадут указанные здесь задачи.")))
 	res = append(res, GetIssueListBlocks(cr.Issues...)...)
 
 	return res
@@ -91,19 +92,19 @@ func GetCrThreadBlocks(cr *models.CodeReviewContext) []slack.Block {
 	res = append(res, slack.NewDividerBlock())
 
 	if len(cr.Issues) > 0 {
-		res = append(res, GetMarkdownTextSectionBlock("*Issues:*"))
+		res = append(res, slackutils.GetMarkdownTextSectionBlock("*Issues:*"))
 		res = append(res, GetIssueListBlocks(cr.Issues...)...)
 		res = append(res, slack.NewDividerBlock())
 	}
 
-	res = append(res, GetMarkdownTextSectionBlock("*Pull requests:*"))
+	res = append(res, slackutils.GetMarkdownTextSectionBlock("*Pull requests:*"))
 	res = append(res, GetPullRequestListBlocks(cr.PullRequests...)...)
 	res = append(res, slack.NewDividerBlock())
 
 	requesterSlackName := cr.Requester.SlackId
 	contextText := fmt.Sprintf("Создано через бота по запросу <@%s>", requesterSlackName)
 
-	res = append(res, GetSimpleMarkdownContextBlock(contextText))
+	res = append(res, slackutils.GetSimpleMarkdownContextBlock(contextText))
 
 	return res
 }
@@ -112,17 +113,17 @@ func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext, resetIssueLi
 	inputs := GetCrPreviewEditBlocks(cr, resetIssueList)
 
 	cancelButton := slack.NewButtonBlockElement(
-		GetActionId(CrPreviewEdit, CrPreviewEditCancel),
-		GetActionId(CrPreviewEdit, CrPreviewEditCancel),
-		GetEmojiPlainTextObject("Отмена :x:"))
+		slackutils.GetActionId(CrPreviewEdit, CrPreviewEditCancel),
+		slackutils.GetActionId(CrPreviewEdit, CrPreviewEditCancel),
+		slackutils.GetEmojiPlainTextObject("Отмена :x:"))
 
 	confirmButton := slack.NewButtonBlockElement(
-		GetActionId(CrPreviewEdit, CrPreviewEditConfirm),
-		GetActionId(CrPreviewEdit, CrPreviewEditConfirm),
-		GetEmojiPlainTextObject("Создать тред :check_mark: "))
+		slackutils.GetActionId(CrPreviewEdit, CrPreviewEditConfirm),
+		slackutils.GetActionId(CrPreviewEdit, CrPreviewEditConfirm),
+		slackutils.GetEmojiPlainTextObject("Создать тред :check_mark: "))
 
 	confirmActionBlock := slack.NewActionBlock(
-		GetBlockId(CrPreviewEdit, CrPreviewEditConfirm),
+		slackutils.GetBlockId(CrPreviewEdit, CrPreviewEditConfirm),
 		cancelButton,
 		confirmButton,
 	)
@@ -135,19 +136,19 @@ func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext, resetIssueLi
 func GetCrPreviewModal(cr *models.CodeReviewContext, channelId string, resetIssueList bool) slack.ModalViewRequest {
 
 	blocks := make([]slack.Block, 0)
-	blocks = append(blocks, GetChannelInputBlock(
-		GetBlockId(CrPreviewEdit, ChannelField),
-		GetActionId(CrPreviewEdit, ChannelField),
+	blocks = append(blocks, slackutils.GetChannelInputBlock(
+		slackutils.GetBlockId(CrPreviewEdit, ChannelField),
+		slackutils.GetActionId(CrPreviewEdit, ChannelField),
 		"Канал для создания треда",
-		WithInitialValue(channelId)))
+		slackutils.WithInitialValue(channelId)))
 	blocks = append(blocks, GetCrPreviewEditBlocks(cr, resetIssueList)...)
 
 	return slack.ModalViewRequest{
-		CallbackID: GetCallbackId(CrPreviewEditModal),
+		CallbackID: slackutils.GetCallbackId(CrPreviewEditModal),
 		Type:       slack.VTModal,
-		Title:      GetEmojiPlainTextObject("Создание треда #CR"),
-		Submit:     GetSimplePlainTextObject("Подтвердить"),
-		Close:      GetSimplePlainTextObject("Отмена"),
+		Title:      slackutils.GetEmojiPlainTextObject("Создание треда #CR"),
+		Submit:     slackutils.GetSimplePlainTextObject("Подтвердить"),
+		Close:      slackutils.GetSimplePlainTextObject("Отмена"),
 		Blocks: slack.Blocks{
 			BlockSet: blocks,
 		},
@@ -164,7 +165,7 @@ func GetPullRequestListBlocks(prs ...*models.PullRequestInfo) []slack.Block {
 			pr.Title,
 			pr.Ref.Repo)
 
-		res = append(res, GetMarkdownTextSectionBlock(text))
+		res = append(res, slackutils.GetMarkdownTextSectionBlock(text))
 	}
 
 	return res
@@ -180,7 +181,7 @@ func GetIssueListBlocks(issues ...*models.IssueInfo) []slack.Block {
 			issue.Ref.Key,
 			issue.Title)
 
-		res = append(res, GetMarkdownTextSectionBlock(text))
+		res = append(res, slackutils.GetMarkdownTextSectionBlock(text))
 	}
 
 	return res
@@ -194,7 +195,7 @@ func GetReviewersBlocks(reviewers []*models.UserRef) []slack.Block {
 	}), " ")
 
 	res := []slack.Block{
-		GetMarkdownTextSectionBlock(fmt.Sprintf("*#CR* %s", reviewersText)),
+		slackutils.GetMarkdownTextSectionBlock(fmt.Sprintf("*#CR* %s", reviewersText)),
 	}
 
 	notValidBlock := getNotValidReviewersContextBlock(notFoundGithubLogins)
@@ -214,7 +215,7 @@ func getNotValidReviewersContextBlock(notFoundGithubLogins []string) slack.Block
 		":warning: Некоторые ревьюверы не были найдены по их GitHub лоигнам: %s",
 		wrapCodeQuotesAndJoin(notFoundGithubLogins...))
 
-	return GetSimpleMarkdownContextBlock(text)
+	return slackutils.GetSimpleMarkdownContextBlock(text)
 }
 
 func resolveReviewerNames(reviewers []*models.UserRef) ([]string, []string) {

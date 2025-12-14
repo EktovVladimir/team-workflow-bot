@@ -6,6 +6,7 @@ import (
 	"strings"
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
+	"team-workflow-bot/pkg/slackutils"
 
 	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
@@ -101,10 +102,10 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 	userId := callback.User.ID
 
 	var (
-		crPreviewSubmitActionId    = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditConfirm)
-		crPreviewCancelActionId    = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditCancel)
-		crPreviewPrListActionId    = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
-		crPreviewIssueListActionId = slackviews.GetActionId(slackviews.CrPreviewEdit, slackviews.IssueRawListField)
+		crPreviewSubmitActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditConfirm)
+		crPreviewCancelActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.CrPreviewEditCancel)
+		crPreviewPrListActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
+		crPreviewIssueListActionId = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.IssueRawListField)
 	)
 
 	if actionId == crPreviewSubmitActionId {
@@ -185,7 +186,7 @@ func (h *Handler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Ev
 }
 
 func (h *Handler) HandleSlackViewSubmission(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, callback slack.InteractionCallback) {
-	if callback.View.CallbackID != slackviews.GetCallbackId(slackviews.CrPreviewEditModal) {
+	if callback.View.CallbackID != slackutils.GetCallbackId(slackviews.CrPreviewEditModal) {
 		return
 	}
 
@@ -212,11 +213,11 @@ func (h *Handler) isCommandApplicable(cmd slack.SlashCommand) bool {
 		cmd.Command == "/servit" && strings.HasPrefix(cmd.Text, "cr")
 }
 
-func getRequestRefFromPreviewEdit(state slackviews.ViewStateValues, userId string) *CrPreviewFormData {
-	reviewerSlackIds := slackviews.GetSelectedUsers(state, slackviews.CrPreviewEdit, slackviews.ReviewersField)
-	prUrls := slackviews.GetMultilineInputText(state, slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
-	issuesUrls := slackviews.GetMultilineInputText(state, slackviews.CrPreviewEdit, slackviews.IssueRawListField)
-	channelId := slackviews.GetSelectedChannel(state, slackviews.CrPreviewEdit, slackviews.ChannelField)
+func getRequestRefFromPreviewEdit(state slackutils.ViewStateValues, userId string) *CrPreviewFormData {
+	reviewerSlackIds := slackutils.GetSelectedUsers(state, slackviews.CrPreviewEdit, slackviews.ReviewersField)
+	prUrls := slackutils.GetMultilineInputText(state, slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
+	issuesUrls := slackutils.GetMultilineInputText(state, slackviews.CrPreviewEdit, slackviews.IssueRawListField)
+	channelId := slackutils.GetSelectedChannel(state, slackviews.CrPreviewEdit, slackviews.ChannelField)
 
 	return &CrPreviewFormData{
 		ChannelId:        channelId,
