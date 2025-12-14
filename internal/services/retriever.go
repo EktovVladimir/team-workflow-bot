@@ -116,7 +116,7 @@ func (r *Retriever) GetUserByGithubLoginSafe(ctx context.Context, userRef *model
 		return &models.User{}, ErrUserRefIsEmpty
 	}
 
-	dbUser, err := rep.GetByGithubLogin(ctx, userRef.GithubLogin)
+	dbUser, err := rep.GetUserByGithubLogin(ctx, userRef.GithubLogin)
 
 	if err == nil {
 		return dbUser, nil

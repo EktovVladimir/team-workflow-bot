@@ -71,7 +71,7 @@ func (r *Repository) GetBySlackId(ctx context.Context, slackId string) (*models.
 	return &user, nil
 }
 
-func (r *Repository) GetByGithubLogin(ctx context.Context, login string) (*models.User, error) {
+func (r *Repository) GetUserByGithubLogin(ctx context.Context, login string) (*models.User, error) {
 	var user models.User
 	err := r.db.Collection(UsersCollection).
 		FindOne(ctx, bson.M{"github_login": login}).

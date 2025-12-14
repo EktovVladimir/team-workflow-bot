@@ -3,9 +3,13 @@ package codereview
 import (
 	"context"
 	"errors"
+	"fmt"
 	"team-workflow-bot/internal/db"
 	"team-workflow-bot/internal/integrations/githubflow"
+	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
+	"team-workflow-bot/pkg/slackutils"
+	"time"
 
 	"github.com/cbrgm/githubevents/v2/githubevents"
 	"github.com/google/go-github/v79/github"
@@ -76,4 +80,39 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 		Channel:   threadRef.ChannelId,
 		Timestamp: threadRef.Ts,
 	})
+	if err != nil {
+		logrus.Errorf("Failed to add reaction to code review thread: %v", err)
+	}
+
+	notificationText := fmt.Sprintf("Смерджено: %s", dbCrThread.Context.KeyedIssue)
+
+	_, _, err = h.bag.Client.Slack.PostMessageContext(ctx, threadRef.ChannelId,
+		slack.MsgOptionText(notificationText, false),
+		slack.MsgOptionTS(threadRef.Ts),
+		slack.MsgOptionBlocks(slackutils.GetMarkdownTextSectionBlock("Смерджено :white_check_mark:")))
+	if err != nil {
+		logrus.Errorf("Failed to post merged message to code review thread: %v", err)
+		return
+	}
+
+	slackUserId := ""
+	senderLogin := event.Sender.GetLogin()
+	user, err := h.bag.DB.Repository.GetUserByGithubLogin(ctx, senderLogin)
+	if err == nil {
+		slackUserId = user.SlackId
+	} else {
+		slackUserId = dbCrThread.Context.Requester.SlackId
+	}
+
+	if slackUserId != "" {
+		_, err = h.bag.Client.Slack.PostEphemeralContext(
+			ctx,
+			threadRef.ChannelId,
+			slackUserId,
+			slack.MsgOptionTS(threadRef.Ts),
+			slack.MsgOptionBlocks(slackviews.GetDeployDatePickerBlocks(time.Now())...))
+		if err != nil {
+			logrus.Error("Failed to post deploy date picker: ", err)
+		}
+	}
 }
