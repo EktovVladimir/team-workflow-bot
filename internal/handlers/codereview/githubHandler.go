@@ -18,7 +18,12 @@ import (
 	"github.com/slack-go/slack"
 )
 
-func (h *Handler) HandlePullRequestEvent(ctx context.Context, event *github.PullRequestEvent) {
+func (h *Handler) HandlePullRequestEvent(_ context.Context, event *github.PullRequestEvent) {
+
+	// Создадим новый контекст, так как исходный контекст уже может быть отменен.
+	// TODO нужно разобраться почему так происходит и можно ли этого избежать.
+	ctx := context.Background()
+
 	action := event.GetAction()
 
 	prInfo := githubflow.MapPullRequestInfoFromResponse(event.PullRequest)
