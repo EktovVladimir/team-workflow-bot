@@ -19,7 +19,7 @@ const (
 
 func GetUserEditModal(user *models.User, adminMode bool) slack.ModalViewRequest {
 	title := "Добавить"
-	if user.Id != "" {
+	if !user.Id.IsZero() {
 		title = "Редактировать"
 	}
 

@@ -78,6 +78,7 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 	}
 
 	dbCrThread.Context.PullRequests[updIndex] = prInfo
+	dbCrThread.Status = models.CodeReviewStatusClosed
 
 	threadRef := dbCrThread.Thread
 
@@ -124,8 +125,10 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 	err = h.bag.DB.Repository.UpdateCodeReviewThread(ctx, dbCrThread)
 	if err != nil {
 		logrus.Errorf("Failed to update code review thread in DB: %v", err)
-		//TODO эфемерка?
+
+		h.bag.Services.Slack.SendSimpleThreadErrorMessage(ctx,
+			threadRef.ChannelId, threadRef.Ts,
+			"Ошибка обновления БДЖ: "+err.Error())
 		return
 	}
-
 }

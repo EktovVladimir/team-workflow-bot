@@ -34,6 +34,24 @@ func (s *Service) SendSimpleEphemeralErrorMessage(
 	)
 }
 
+func (s *Service) SendSimpleThreadErrorMessage(
+	ctx context.Context,
+	channel string,
+	ts string,
+	text string) {
+	_, _, _, _ = s.client.SendMessageContext(
+		ctx,
+		channel,
+		slack.MsgOptionTS(ts),
+		slack.MsgOptionAttachments(
+			slack.Attachment{
+				Color: "danger",
+				Text:  text,
+			},
+		),
+	)
+}
+
 func (s *Service) GetMessageByTs(ctx context.Context, channelId string, ts string) (*slack.Message, error) {
 	mess, err := s.client.GetConversationHistoryContext(ctx,
 		&slack.GetConversationHistoryParameters{

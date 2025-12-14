@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"team-workflow-bot/internal/models"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -14,9 +15,9 @@ type Repository struct {
 }
 
 const (
-	UsersCollection             = "Users"
-	RolesCollection             = "Roles"
-	TeamsCollection             = "Teams"
+	UsersCollection             = "users"
+	RolesCollection             = "roles"
+	TeamsCollection             = "teams"
 	CodeReviewThreadsCollection = "code_review_threads"
 )
 
@@ -41,18 +42,18 @@ func (r *Repository) CreateUser(ctx context.Context, item *models.User) (string,
 }
 
 func (r *Repository) UpdateUser(ctx context.Context, item *models.User) error {
-
-	updUser := *item
-	updUser.Id = ""
-
-	//TODO обновлять по ID
-	_, err := r.db.Collection(UsersCollection).UpdateOne(
+	res, err := r.db.Collection(UsersCollection).ReplaceOne(
 		ctx,
-		bson.M{"slack_id": item.SlackId},
-		bson.M{"$set": &updUser},
+		bson.M{"_id": item.Id},
+		item,
 	)
-
-	return err
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *Repository) GetBySlackId(ctx context.Context, slackId string) (*models.User, error) {
@@ -150,6 +151,10 @@ func (r *Repository) GetAllTeams(ctx context.Context) ([]models.Team, error) {
 }
 
 func (r *Repository) CreateCodeReviewThread(ctx context.Context, item *models.CodeReviewThread) (string, error) {
+	now := time.Now()
+	item.CreatedAt = now
+	item.UpdatedAt = now
+
 	res, err := r.db.Collection(CodeReviewThreadsCollection).InsertOne(ctx, item)
 	if err != nil {
 		return "", err
@@ -166,7 +171,7 @@ func (r *Repository) CreateCodeReviewThread(ctx context.Context, item *models.Co
 func (r *Repository) GetCodeReviewThreadByContextKey(ctx context.Context, key string) (*models.CodeReviewThread, error) {
 	var crt models.CodeReviewThread
 	err := r.db.Collection(CodeReviewThreadsCollection).
-		FindOne(ctx, bson.M{"context.key": key}).
+		FindOne(ctx, bson.M{"context.keyed_issue": key}).
 		Decode(&crt)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -197,10 +202,18 @@ func (r *Repository) GetCodeReviewThreadByPullRequestRef(ctx context.Context, re
 }
 
 func (r *Repository) UpdateCodeReviewThread(ctx context.Context, item *models.CodeReviewThread) error {
-	_, err := r.db.Collection(CodeReviewThreadsCollection).ReplaceOne(
+	item.UpdatedAt = time.Now()
+
+	res, err := r.db.Collection(CodeReviewThreadsCollection).ReplaceOne(
 		ctx,
 		bson.M{"_id": item.Id},
 		item,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrRecordNotFound
+	}
+	return nil
 }

@@ -1,5 +1,11 @@
 package models
 
+import (
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
 const (
 	//TODO более гибкие роли и права
 	RoleAdmin     = "admin"
@@ -13,8 +19,17 @@ const (
 	CodeReviewStatusCanceled = "canceled"
 )
 
+type UniqId = primitive.ObjectID
+
+type Auditable struct {
+	CreatedAt time.Time `bson:"created_at"`
+	UpdatedAt time.Time `bson:"updated_at"`
+	CreatedBy UniqId    `bson:"created_by"`
+	UpdatedBy UniqId    `bson:"updated_by"`
+}
+
 type User struct {
-	Id              string   `bson:"_id,omitempty"`
+	Id              UniqId   `bson:"_id,omitempty"`
 	Email           string   `bson:"email"`
 	SlackName       string   `bson:"slack_name"`
 	SlackId         string   `bson:"slack_id"`
@@ -41,13 +56,13 @@ func (u *User) HasRole(roleName string) bool {
 }
 
 type Role struct {
-	Id          string `bson:"_id,omitempty"`
+	Id          UniqId `bson:"_id,omitempty"`
 	Name        string `bson:"name"`
 	Description string `bson:"description,omitempty"`
 }
 
 type Team struct {
-	Id          string `bson:"_id,omitempty"`
+	Id          UniqId `bson:"_id,omitempty"`
 	Name        string `bson:"name"`
 	Description string `bson:"description,omitempty"`
 	IssueRegex  string `bson:"issue_regex,omitempty"`
@@ -55,9 +70,11 @@ type Team struct {
 }
 
 type CodeReviewThread struct {
-	Id          string             `bson:"_id,omitempty"`
+	Id          UniqId             `bson:"_id,omitempty"`
 	Thread      *ThreadRef         `bson:"thread"`
 	MessageLink string             `bson:"message_link,omitempty"`
 	Status      string             `bson:"status,omitempty"`
 	Context     *CodeReviewContext `bson:"context"`
+
+	Auditable `bson:",inline"`
 }
