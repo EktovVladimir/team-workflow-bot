@@ -70,7 +70,7 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 	}
 
 	_, updIndex, found := lo.FindIndexOf(dbCrThread.Context.PullRequests, func(item *models.PullRequestInfo) bool {
-		return item.RefKey == prInfo.RefKey
+		return item.Ref.Key == prInfo.Ref.Key
 	})
 	if !found {
 		logrus.Errorf("Failed to find PR info by PR ref: %v", prInfo.Ref)
@@ -78,7 +78,7 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 	}
 
 	dbCrThread.Context.PullRequests[updIndex] = prInfo
-	dbCrThread.Status = models.CodeReviewStatusClosed
+	dbCrThread.Status = models.CodeReviewStatusMerged
 
 	threadRef := dbCrThread.Thread
 

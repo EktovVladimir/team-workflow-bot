@@ -7,17 +7,23 @@ import (
 )
 
 type PullRequestRef struct {
+	Key    string `bson:"key"`
 	Owner  string `bson:"owner"`
 	Repo   string `bson:"repo"`
 	Number int    `bson:"number"`
 }
 
-func (ref *PullRequestRef) ToUrl() string {
-	return fmt.Sprintf("https://github.com/%s/%s/pull/%d", ref.Owner, ref.Repo, ref.Number)
+func NewPullRequestRef(owner, repo string, number int) *PullRequestRef {
+	return &PullRequestRef{
+		Owner:  owner,
+		Repo:   repo,
+		Number: number,
+		Key:    fmt.Sprintf("%s/%s#%d", owner, repo, number),
+	}
 }
 
-func (ref *PullRequestRef) ToKey() string {
-	return fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Number)
+func (ref *PullRequestRef) ToUrl() string {
+	return fmt.Sprintf("https://github.com/%s/%s/pull/%d", ref.Owner, ref.Repo, ref.Number)
 }
 
 func ParsePullRequestRefFromUrl(url string) (*PullRequestRef, bool) {
@@ -33,12 +39,11 @@ func ParsePullRequestRefFromUrl(url string) (*PullRequestRef, bool) {
 	if err != nil {
 		return nil, false
 	}
-	return &PullRequestRef{Owner: owner, Repo: repo, Number: num}, true
+	return NewPullRequestRef(owner, repo, num), true
 }
 
 type PullRequestInfo struct {
 	Ref        *PullRequestRef `bson:"ref"`
-	RefKey     string          `bson:"ref_key"`
 	HeadBranch string          `bson:"head_branch"`
 	BaseBranch string          `bson:"base_branch"`
 	Title      string          `bson:"title"`

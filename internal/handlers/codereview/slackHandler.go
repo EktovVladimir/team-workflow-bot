@@ -10,6 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 )
 
@@ -235,6 +236,16 @@ func (h *Handler) HandleSlackViewSubmission(ctx context.Context, evt *socketmode
 	}
 }
 
+func (h *Handler) HandleSlackAppMentionEvent(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, message *slackevents.AppMentionEvent) {
+	ts := message.ThreadTimeStamp
+	//channelId := message.Channel
+
+	if !strings.Contains(message.Text, "/cr") || ts == "" {
+		return
+	}
+
+}
+
 func (h *Handler) isCommandApplicable(cmd slack.SlashCommand) bool {
 	return cmd.Command == "/cr" ||
 		cmd.Command == "/servit" && strings.HasPrefix(cmd.Text, "cr")
@@ -295,10 +306,7 @@ func (h *Handler) handleAndSendCrThread(
 	}
 
 	dbRecord := &models.CodeReviewThread{
-		Thread: &models.ThreadRef{
-			ChannelId: respChannel,
-			Ts:        respTs,
-		},
+		Thread:  models.NewThreadRef(respChannel, respTs),
 		Context: crContext,
 		Status:  models.CodeReviewStatusOpen,
 	}

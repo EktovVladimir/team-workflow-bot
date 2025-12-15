@@ -332,6 +332,6 @@ func getUniqKeysFromMessages(messages ...string) []string {
 
 func getUniqPullRequestRefs(prRefs ...*models.PullRequestRef) []*models.PullRequestRef {
 	return lo.UniqBy(prRefs, func(r *models.PullRequestRef) string {
-		return r.ToKey()
+		return r.Key
 	})
 }

@@ -59,8 +59,12 @@ func EnsureIndexes(ctx context.Context, db *mongo.Database) error {
 			Options: options.Index().SetName("idx_crt_pr_ref_number"),
 		},
 		{
-			Keys:    bson.D{{Key: "context.pull_requests.ref_key", Value: 1}},
+			Keys:    bson.D{{Key: "context.pull_requests.ref.key", Value: 1}},
 			Options: options.Index().SetName("idx_crt_pr_ref_key"),
+		},
+		{
+			Keys:    bson.D{{Key: "thread.key", Value: 1}},
+			Options: options.Index().SetName("idx_crt_thread_ref_key"),
 		},
 	}
 	if _, err := crtColl.Indexes().CreateMany(ctx, crtIndexes); err != nil {

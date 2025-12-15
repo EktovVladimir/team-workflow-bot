@@ -186,9 +186,8 @@ func (r *Repository) GetCodeReviewThreadByContextKey(ctx context.Context, key st
 
 func (r *Repository) GetCodeReviewThreadByPullRequestRef(ctx context.Context, ref *models.PullRequestRef) (*models.CodeReviewThread, error) {
 	var crt models.CodeReviewThread
-	refKey := ref.ToKey()
 	err := r.db.Collection(CodeReviewThreadsCollection).
-		FindOne(ctx, bson.M{"context.pull_requests.ref_key": refKey}).
+		FindOne(ctx, bson.M{"context.pull_requests.ref.key": ref.Key}).
 		Decode(&crt)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {

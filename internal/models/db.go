@@ -13,12 +13,6 @@ const (
 	RoleUser      = "user"
 )
 
-const (
-	CodeReviewStatusOpen     = "open"
-	CodeReviewStatusClosed   = "closed"
-	CodeReviewStatusCanceled = "canceled"
-)
-
 type UniqId = primitive.ObjectID
 
 type Auditable struct {
@@ -67,14 +61,4 @@ type Team struct {
 	Description string `bson:"description,omitempty"`
 	IssueRegex  string `bson:"issue_regex,omitempty"`
 	Channel     string `bson:"channel,omitempty"`
-}
-
-type CodeReviewThread struct {
-	Id          UniqId             `bson:"_id,omitempty"`
-	Thread      *ThreadRef         `bson:"thread"`
-	MessageLink string             `bson:"message_link,omitempty"`
-	Status      string             `bson:"status,omitempty"`
-	Context     *CodeReviewContext `bson:"context"`
-
-	Auditable `bson:",inline"`
 }
