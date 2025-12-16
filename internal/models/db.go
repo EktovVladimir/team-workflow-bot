@@ -22,6 +22,11 @@ type Auditable struct {
 	UpdatedBy UniqId    `bson:"updated_by"`
 }
 
+type SoftDeletable struct {
+	DeletedAt *time.Time `bson:"deleted_at,omitempty"`
+	DeletedBy *UniqId    `bson:"deleted_by,omitempty"`
+}
+
 type User struct {
 	Id              UniqId   `bson:"_id,omitempty"`
 	Email           string   `bson:"email"`

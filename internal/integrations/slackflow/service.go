@@ -16,7 +16,7 @@ func NewService(client *slack.Client) *Service {
 	}
 }
 
-func (s *Service) SendSimpleEphemeralErrorMessage(
+func (s *Service) SendEphemeralErrorMessage(
 	ctx context.Context,
 	channel string,
 	userId string,
@@ -34,7 +34,27 @@ func (s *Service) SendSimpleEphemeralErrorMessage(
 	)
 }
 
-func (s *Service) SendSimpleThreadErrorMessage(
+func (s *Service) SendThreadEphemeralErrorMessage(
+	ctx context.Context,
+	channel string,
+	ts string,
+	userId string,
+	text string) {
+	_, _, _, _ = s.client.SendMessageContext(
+		ctx,
+		channel,
+		slack.MsgOptionPostEphemeral(userId),
+		slack.MsgOptionTS(ts),
+		slack.MsgOptionAttachments(
+			slack.Attachment{
+				Color: "danger",
+				Text:  text,
+			},
+		),
+	)
+}
+
+func (s *Service) SendThreadErrorMessage(
 	ctx context.Context,
 	channel string,
 	ts string,

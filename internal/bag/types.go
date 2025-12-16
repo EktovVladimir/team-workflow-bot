@@ -34,3 +34,13 @@ type InfrastructureServiceBag struct {
 	Jira   *jiraflow.Service
 	Slack  *slackflow.Service
 }
+
+type ServiceWithDependencies struct {
+	Bag *DependenciesBag
+}
+
+func NewServiceWithDependencies(bag *DependenciesBag) *ServiceWithDependencies {
+	return &ServiceWithDependencies{
+		Bag: bag,
+	}
+}

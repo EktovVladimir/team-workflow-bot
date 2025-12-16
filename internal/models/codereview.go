@@ -1,12 +1,15 @@
 package models
 
-import "github.com/samber/lo"
+import (
+	"github.com/samber/lo"
+)
 
 const (
-	CodeReviewStatusOpen     = "open"
-	CodeReviewStatusMerged   = "merged"
-	CodeReviewStatusCanceled = "canceled"
-	CodeReviewStatusDeployed = "deployed"
+	CodeReviewStatusOpen       = "open"
+	CodeReviewStatusHalfMerged = "half_merged"
+	CodeReviewStatusMerged     = "merged"
+	CodeReviewStatusCanceled   = "canceled"
+	CodeReviewStatusDeployed   = "deployed"
 )
 
 type CodeReviewThread struct {
@@ -16,7 +19,8 @@ type CodeReviewThread struct {
 	Status      string             `bson:"status,omitempty"`
 	Context     *CodeReviewContext `bson:"context"`
 
-	Auditable `bson:",inline"`
+	SoftDeletable `bson:",inline"`
+	Auditable     `bson:",inline"`
 }
 
 type CodeReviewContext struct {

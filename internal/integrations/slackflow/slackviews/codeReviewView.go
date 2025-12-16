@@ -11,24 +11,30 @@ import (
 )
 
 const (
-	CrPreviewEditModal      = "cr_preview_edit_modal"
-	CrPreviewEdit           = "cr_preview_edit"
+	CrPreviewEditModal = "cr_preview_edit_modal"
+
+	CrPreviewEdit    = "cr_preview_edit"
+	CrPreviewLoading = "cr_preview_loading"
+	CrThreadEdit     = "cr_thread_edit"
+
 	ChannelField            = "channel"
 	ReviewersField          = "reviewers"
 	PullRequestRawListField = "pull_request_raw_list"
 	IssueRawListField       = "issue_raw_list"
 
-	CrPreviewEditCancel  = "cancel"
-	CrPreviewEditConfirm = "confirm"
+	CrEditCancel           = "cancel"
+	CrEditConfirmAndPost   = "confirm_post"
+	CrEditConfirmAndUpdate = "confirm_update"
+	CrEditDelete           = "delete"
 )
 
-func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, resetIssueList bool) []slack.Block {
+func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, base string, resetIssueList bool) []slack.Block {
 	validReviewers, notFoundGhReviewers := resolveReviewerNames(cr.Reviewers)
 
 	res := []slack.Block{
 		slackutils.GetUserMultiSelectInputBlock(
-			slackutils.GetBlockId(CrPreviewEdit, ReviewersField),
-			slackutils.GetActionId(CrPreviewEdit, ReviewersField),
+			slackutils.GetBlockId(base, ReviewersField),
+			slackutils.GetActionId(base, ReviewersField),
 			"Reviewers",
 			slackutils.WithInitialValues(validReviewers)),
 	}
@@ -47,8 +53,8 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, resetIssueList bool) [
 
 	res = append(res,
 		slackutils.GetTextInputBlock(
-			slackutils.GetBlockId(CrPreviewEdit, PullRequestRawListField),
-			slackutils.GetActionId(CrPreviewEdit, PullRequestRawListField),
+			slackutils.GetBlockId(base, PullRequestRawListField),
+			slackutils.GetActionId(base, PullRequestRawListField),
 			"Pull requests",
 			slackutils.WithDispatchAction(true),
 			slackutils.WithInitialValue(prListInputText),
@@ -64,15 +70,15 @@ func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, resetIssueList bool) [
 	})
 	issuesListInputText := strings.Join(issueUrls, "\n")
 
-	issueListBlockId := slackutils.GetBlockId(CrPreviewEdit, IssueRawListField)
+	issueListBlockId := slackutils.GetBlockId(base, IssueRawListField)
 	if resetIssueList {
-		issueListBlockId = slackutils.GetBlockIdWithRandSuffix(CrPreviewEdit, IssueRawListField)
+		issueListBlockId = slackutils.GetBlockIdWithRandSuffix(base, IssueRawListField)
 	}
 
 	res = append(res,
 		slackutils.GetTextInputBlock(
 			issueListBlockId,
-			slackutils.GetActionId(CrPreviewEdit, IssueRawListField),
+			slackutils.GetActionId(base, IssueRawListField),
 			"Задачи",
 			slackutils.WithDispatchAction(true),
 			slackutils.WithInitialValue(issuesListInputText),
@@ -110,20 +116,48 @@ func GetCrThreadBlocks(cr *models.CodeReviewContext) []slack.Block {
 }
 
 func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext, resetIssueList bool) []slack.Block {
-	inputs := GetCrPreviewEditBlocks(cr, resetIssueList)
+	base := CrPreviewEdit
+
+	inputs := GetCrPreviewEditBlocks(cr, base, resetIssueList)
 
 	cancelButton := slack.NewButtonBlockElement(
-		slackutils.GetActionId(CrPreviewEdit, CrPreviewEditCancel),
-		slackutils.GetActionId(CrPreviewEdit, CrPreviewEditCancel),
+		slackutils.GetActionId(base, CrEditCancel),
+		slackutils.GetActionId(base, CrEditCancel),
 		slackutils.GetEmojiPlainTextObject("Отмена :x:"))
 
 	confirmButton := slack.NewButtonBlockElement(
-		slackutils.GetActionId(CrPreviewEdit, CrPreviewEditConfirm),
-		slackutils.GetActionId(CrPreviewEdit, CrPreviewEditConfirm),
+		slackutils.GetActionId(base, CrEditConfirmAndPost),
+		slackutils.GetActionId(base, CrEditConfirmAndPost),
 		slackutils.GetEmojiPlainTextObject("Создать тред :check_mark: "))
 
 	confirmActionBlock := slack.NewActionBlock(
-		slackutils.GetBlockId(CrPreviewEdit, CrPreviewEditConfirm),
+		slackutils.GetBlockId(base, CrEditConfirmAndPost),
+		cancelButton,
+		confirmButton,
+	)
+
+	res := append(inputs, confirmActionBlock)
+
+	return res
+}
+
+func GetCrThreadUpdateBlocks(cr *models.CodeReviewContext) []slack.Block {
+	base := CrThreadEdit
+
+	inputs := GetCrPreviewEditBlocks(cr, base, false)
+
+	cancelButton := slack.NewButtonBlockElement(
+		slackutils.GetActionId(base, CrEditCancel),
+		CrEditCancel,
+		slackutils.GetEmojiPlainTextObject("Отмена :x:"))
+
+	confirmButton := slack.NewButtonBlockElement(
+		slackutils.GetActionId(base, CrEditConfirmAndUpdate),
+		CrEditConfirmAndUpdate,
+		slackutils.GetEmojiPlainTextObject("Обновить тред :check_mark:"))
+
+	confirmActionBlock := slack.NewActionBlock(
+		slackutils.GetBlockId(base, CrEditConfirmAndUpdate),
 		cancelButton,
 		confirmButton,
 	)
@@ -134,14 +168,15 @@ func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext, resetIssueLi
 }
 
 func GetCrPreviewModal(cr *models.CodeReviewContext, channelId string, resetIssueList bool) slack.ModalViewRequest {
+	base := CrPreviewEdit
 
 	blocks := make([]slack.Block, 0)
 	blocks = append(blocks, slackutils.GetChannelInputBlock(
-		slackutils.GetBlockId(CrPreviewEdit, ChannelField),
-		slackutils.GetActionId(CrPreviewEdit, ChannelField),
+		slackutils.GetBlockId(base, ChannelField),
+		slackutils.GetActionId(base, ChannelField),
 		"Канал для создания треда",
 		slackutils.WithInitialValue(channelId)))
-	blocks = append(blocks, GetCrPreviewEditBlocks(cr, resetIssueList)...)
+	blocks = append(blocks, GetCrPreviewEditBlocks(cr, base, resetIssueList)...)
 
 	return slack.ModalViewRequest{
 		CallbackID: slackutils.GetCallbackId(CrPreviewEditModal),
@@ -159,7 +194,7 @@ func GetCrPreviewLoadingModal() slack.ModalViewRequest {
 	blocks := []slack.Block{
 		slackutils.GetMarkdownTextSectionBlock(":loading1: Секундочку, работаем..."),
 	}
-	//blocks = append(blocks, GetCrPreviewEditBlocks(&models.CodeReviewContext{}, false)...)
+	blocks = append(blocks, GetCrPreviewEditBlocks(&models.CodeReviewContext{}, CrPreviewLoading, false)...)
 
 	return slack.ModalViewRequest{
 		CallbackID: slackutils.GetCallbackId(CrPreviewEditModal),

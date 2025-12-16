@@ -8,6 +8,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Repository struct {
@@ -186,8 +187,26 @@ func (r *Repository) GetCodeReviewThreadByContextKey(ctx context.Context, key st
 
 func (r *Repository) GetCodeReviewThreadByPullRequestRef(ctx context.Context, ref *models.PullRequestRef) (*models.CodeReviewThread, error) {
 	var crt models.CodeReviewThread
+	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})
 	err := r.db.Collection(CodeReviewThreadsCollection).
-		FindOne(ctx, bson.M{"context.pull_requests.ref.key": ref.Key}).
+		FindOne(ctx, bson.M{"context.pull_requests.ref.key": ref.Key}, opts).
+		Decode(&crt)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrRecordNotFound
+		}
+
+		return nil, err
+	}
+
+	return &crt, nil
+}
+
+func (r *Repository) GetCodeReviewThreadByThreadRef(ctx context.Context, ref *models.ThreadRef) (*models.CodeReviewThread, error) {
+	var crt models.CodeReviewThread
+	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	err := r.db.Collection(CodeReviewThreadsCollection).
+		FindOne(ctx, bson.M{"thread.ref.key": ref.Key}, opts).
 		Decode(&crt)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -215,4 +234,21 @@ func (r *Repository) UpdateCodeReviewThread(ctx context.Context, item *models.Co
 		return ErrRecordNotFound
 	}
 	return nil
+}
+
+func (r *Repository) DeleteCodeReviewThread(ctx context.Context, id models.UniqId) error {
+	res, err := r.db.Collection(CodeReviewThreadsCollection).DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		return err
+	}
+	if res.DeletedCount == 0 {
+		return ErrRecordNotFound
+	}
+	return nil
+}
+
+func (r *Repository) DeleteSoftCodeReviewThread(ctx context.Context, item *models.CodeReviewThread) error {
+	now := time.Now()
+	item.DeletedAt = &now
+	return r.UpdateCodeReviewThread(ctx, item)
 }

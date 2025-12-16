@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"team-workflow-bot/internal/bag"
 	"team-workflow-bot/internal/db"
 	"team-workflow-bot/internal/integrations/githubflow"
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
@@ -18,7 +19,20 @@ import (
 	"github.com/slack-go/slack"
 )
 
-func (h *Handler) HandlePullRequestEvent(_ context.Context, event *github.PullRequestEvent) {
+type GithubHandler struct {
+	*Handler
+
+	slackClient *slack.Client
+}
+
+func NewGithubHandler(bag *bag.DependenciesBag, retriever retriever) *GithubHandler {
+	return &GithubHandler{
+		Handler:     newHandler(bag, retriever),
+		slackClient: bag.Client.Slack,
+	}
+}
+
+func (h *GithubHandler) HandlePullRequestEvent(_ context.Context, event *github.PullRequestEvent) {
 
 	// Создадим новый контекст, так как исходный контекст уже может быть отменен.
 	// TODO нужно разобраться почему так происходит и можно ли этого избежать.
@@ -39,11 +53,11 @@ func (h *Handler) HandlePullRequestEvent(_ context.Context, event *github.PullRe
 	}
 }
 
-func (h *Handler) HandlePullRequestReviewEvent(ctx context.Context, event *github.PullRequestReviewEvent) {
+func (h *GithubHandler) HandlePullRequestReviewEvent(ctx context.Context, event *github.PullRequestReviewEvent) {
 	logrus.Infof("Handle PR review event: %s", event.GetAction())
 }
 
-func (h *Handler) handlePullRequestReady(ctx context.Context, event *github.PullRequestEvent, prInfo *models.PullRequestInfo) {
+func (h *GithubHandler) handlePullRequestReady(ctx context.Context, event *github.PullRequestEvent, prInfo *models.PullRequestInfo) {
 	// TODO реализовать
 	// Автоматическое создание треда, если опция включена у юзера.
 	// Проверка: пр открыт, не в драфте и нет спец. лейбла.
@@ -52,13 +66,13 @@ func (h *Handler) handlePullRequestReady(ctx context.Context, event *github.Pull
 	// Если не найден, создаем тред и сохраняем в БД.
 }
 
-func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.PullRequestEvent, prInfo *models.PullRequestInfo) {
+func (h *GithubHandler) handlePullRequestMerged(ctx context.Context, event *github.PullRequestEvent, prInfo *models.PullRequestInfo) {
 
 	// TODO проверка на base ветку.
 	// В разных репах, могут быть разные правила (develop или master, а может быть и для test веток тоже)
 	// Пока ограничены условием в workflow файле, но если перейдем на вебхуки, то нужно будет это учитывать.
 
-	dbCrThread, err := h.bag.DB.Repository.GetCodeReviewThreadByPullRequestRef(ctx, prInfo.Ref)
+	dbCrThread, err := h.repository.GetCodeReviewThreadByPullRequestRef(ctx, prInfo.Ref)
 
 	if err != nil {
 		if errors.Is(err, db.ErrRecordNotFound) {
@@ -82,7 +96,7 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 
 	threadRef := dbCrThread.Thread
 
-	err = h.bag.Client.Slack.AddReactionContext(ctx, "white_check_mark", slack.ItemRef{
+	err = h.slackClient.AddReactionContext(ctx, "white_check_mark", slack.ItemRef{
 		Channel:   threadRef.ChannelId,
 		Timestamp: threadRef.Ts,
 	})
@@ -92,7 +106,7 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 
 	notificationText := fmt.Sprintf("Смерджено: %s", dbCrThread.Context.KeyedIssue)
 
-	_, _, err = h.bag.Client.Slack.PostMessageContext(ctx, threadRef.ChannelId,
+	_, _, err = h.slackClient.PostMessageContext(ctx, threadRef.ChannelId,
 		slack.MsgOptionText(notificationText, false),
 		slack.MsgOptionTS(threadRef.Ts),
 		slack.MsgOptionBlocks(slackutils.GetMarkdownTextSectionBlock("Смерджено :white_check_mark:")))
@@ -103,7 +117,7 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 
 	slackUserId := ""
 	senderLogin := event.Sender.GetLogin()
-	user, err := h.bag.DB.Repository.GetUserByGithubLogin(ctx, senderLogin)
+	user, err := h.repository.GetUserByGithubLogin(ctx, senderLogin)
 	if err == nil {
 		slackUserId = user.SlackId
 	} else {
@@ -111,7 +125,7 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 	}
 
 	if slackUserId != "" {
-		_, err = h.bag.Client.Slack.PostEphemeralContext(
+		_, err = h.slackClient.PostEphemeralContext(
 			ctx,
 			threadRef.ChannelId,
 			slackUserId,
@@ -122,11 +136,11 @@ func (h *Handler) handlePullRequestMerged(ctx context.Context, event *github.Pul
 		}
 	}
 
-	err = h.bag.DB.Repository.UpdateCodeReviewThread(ctx, dbCrThread)
+	err = h.repository.UpdateCodeReviewThread(ctx, dbCrThread)
 	if err != nil {
 		logrus.Errorf("Failed to update code review thread in DB: %v", err)
 
-		h.bag.Services.Slack.SendSimpleThreadErrorMessage(ctx,
+		h.slackService.SendThreadErrorMessage(ctx,
 			threadRef.ChannelId, threadRef.Ts,
 			"Ошибка обновления БДЖ: "+err.Error())
 		return

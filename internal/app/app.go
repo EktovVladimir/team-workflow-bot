@@ -94,20 +94,21 @@ func (a *App) Start(ctx context.Context) {
 
 	retrieveService := services.NewRetriever(dependencies)
 
-	codeReviewHandler := codereview.NewHandler(dependencies, retrieveService)
+	codeReviewSlackHandler := codereview.NewSlackHandler(dependencies, retrieveService)
+	codeReviewGhHandler := codereview.NewGithubHandler(dependencies, retrieveService)
 	deployDatePickerHandler := codereview.NewDeployPickerSlackHandler()
 	configureHandler := configurator.NewSlackBotConfigurationHandler(dependencies)
 
 	slackListener := slackflow.NewListener(
 		slackClient,
 		a.config,
-		slackflow.WithAnyHandler(codeReviewHandler),
+		slackflow.WithAnyHandler(codeReviewSlackHandler),
 		slackflow.WithAnyHandler(deployDatePickerHandler),
 		slackflow.WithAnyHandler(configureHandler))
 
 	ghHandler := githubflow.NewHandler(
 		a.config,
-		githubflow.WithAnyHandler(codeReviewHandler))
+		githubflow.WithAnyHandler(codeReviewGhHandler))
 
 	ghListener := githubflow.NewListener(ghHandler, a.config)
 

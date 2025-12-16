@@ -23,13 +23,19 @@ type interactivityData struct {
 }
 
 type Handler struct {
-	bag *bag.DependenciesBag
+	*bag.ServiceWithDependencies
+
+	repository   *db.Repository
+	slackClient  *slack.Client
+	slackService *slackflow.Service
 }
 
-func NewSlackBotConfigurationHandler(
-	bag *bag.DependenciesBag) *Handler {
+func NewSlackBotConfigurationHandler(b *bag.DependenciesBag) *Handler {
 	return &Handler{
-		bag: bag,
+		ServiceWithDependencies: bag.NewServiceWithDependencies(b),
+		repository:              b.DB.Repository,
+		slackClient:             b.Client.Slack,
+		slackService:            b.Services.Slack,
 	}
 }
 
@@ -48,9 +54,9 @@ func (h *Handler) HandleSlackSlashCommand(
 		return
 	}
 
-	user, err := h.bag.DB.Repository.GetBySlackId(ctx, cmd.UserID)
+	user, err := h.repository.GetBySlackId(ctx, cmd.UserID)
 	if err != nil {
-		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(
+		h.slackService.SendEphemeralErrorMessage(
 			ctx,
 			cmd.ChannelID,
 			cmd.UserID,
@@ -59,7 +65,7 @@ func (h *Handler) HandleSlackSlashCommand(
 	}
 
 	if user == nil || !user.HasRole(models.RoleAdmin) {
-		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(
+		h.slackService.SendEphemeralErrorMessage(
 			ctx,
 			cmd.ChannelID,
 			cmd.UserID,
@@ -101,7 +107,7 @@ func (h *Handler) HandleSlackViewSubmission(
 
 		client.Ack(*evt.Request)
 
-		user, err := h.bag.DB.Repository.GetBySlackId(ctx, slackId)
+		user, err := h.repository.GetBySlackId(ctx, slackId)
 		if err != nil && !errors.Is(err, db.ErrRecordNotFound) {
 			logrus.Errorf("Error getting user by slack id %v: %v", slackId, err)
 			return
@@ -115,7 +121,7 @@ func (h *Handler) HandleSlackViewSubmission(
 				Roles:       roles,
 				Teams:       teams,
 			}
-			_, err = h.bag.DB.Repository.CreateUser(ctx, user)
+			_, err = h.repository.CreateUser(ctx, user)
 			if err != nil {
 				logrus.Errorf("Error creating user with slack id %v: %v", slackId, err)
 				return
@@ -126,7 +132,7 @@ func (h *Handler) HandleSlackViewSubmission(
 			user.Roles = roles
 			user.Teams = teams
 
-			err = h.bag.DB.Repository.UpdateUser(ctx, user)
+			err = h.repository.UpdateUser(ctx, user)
 			if err != nil {
 				logrus.Errorf("Error updating user with slack id %v: %v", slackId, err)
 				return
@@ -153,14 +159,14 @@ func (h *Handler) configureUsers(
 	if len(args) == 1 {
 		userId, _, ok := slackflow.ParseEscapedLink(args[0])
 		if !ok {
-			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, data.channelId, data.userId,
+			h.slackService.SendEphemeralErrorMessage(ctx, data.channelId, data.userId,
 				"Не удалось распознать пользователя из аргумента: "+args[0])
 			return
 		}
 
-		user, err := h.bag.DB.Repository.GetBySlackId(ctx, userId)
+		user, err := h.repository.GetBySlackId(ctx, userId)
 		if err != nil && !errors.Is(err, db.ErrRecordNotFound) {
-			h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(ctx, data.channelId, data.userId,
+			h.slackService.SendEphemeralErrorMessage(ctx, data.channelId, data.userId,
 				"Ошибка при запросе БД: "+err.Error())
 			return
 		}
@@ -180,13 +186,13 @@ func (h *Handler) configureUsers(
 
 func (h *Handler) sendUserEditModal(ctx context.Context, data interactivityData, user *models.User, adminMode bool) {
 
-	_, err := h.bag.Client.Slack.OpenViewContext(
+	_, err := h.slackClient.OpenViewContext(
 		ctx,
 		data.triggerId,
 		slackviews.GetUserEditModal(user, adminMode))
 
 	if err != nil {
-		h.bag.Services.Slack.SendSimpleEphemeralErrorMessage(
+		h.slackService.SendEphemeralErrorMessage(
 			ctx,
 			data.channelId,
 			data.userId,

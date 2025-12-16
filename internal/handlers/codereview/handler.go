@@ -3,6 +3,8 @@ package codereview
 import (
 	"context"
 	"team-workflow-bot/internal/bag"
+	"team-workflow-bot/internal/db"
+	"team-workflow-bot/internal/integrations/slackflow"
 	"team-workflow-bot/internal/models"
 )
 
@@ -12,13 +14,19 @@ type retriever interface {
 }
 
 type Handler struct {
-	bag       *bag.DependenciesBag
+	*bag.ServiceWithDependencies
+
 	retriever retriever
+
+	slackService *slackflow.Service
+	repository   *db.Repository
 }
 
-func NewHandler(bag *bag.DependenciesBag, retriever retriever) *Handler {
+func newHandler(b *bag.DependenciesBag, retriever retriever) *Handler {
 	return &Handler{
-		bag:       bag,
-		retriever: retriever,
+		ServiceWithDependencies: bag.NewServiceWithDependencies(b),
+		retriever:               retriever,
+		slackService:            b.Services.Slack,
+		repository:              b.DB.Repository,
 	}
 }

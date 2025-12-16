@@ -6,7 +6,9 @@ import (
 	"regexp"
 	"strings"
 	"team-workflow-bot/internal/bag"
+	"team-workflow-bot/internal/db"
 	"team-workflow-bot/internal/integrations/githubflow"
+	"team-workflow-bot/internal/integrations/jiraflow"
 	"team-workflow-bot/internal/models"
 
 	"sync"
@@ -26,12 +28,23 @@ var ErrSlackUserPublicEmailNotFound = errors.New("slack user has no public email
 var ErrNothingToCollect = errors.New("nothing to collect")
 
 type Retriever struct {
-	bag *bag.DependenciesBag
+	*bag.ServiceWithDependencies
+
+	repository  *db.Repository
+	slackClient *slack.Client
+	ghClient    *github.Client
+	ghService   *githubflow.Service
+	jiraService *jiraflow.Service
 }
 
-func NewRetriever(bag *bag.DependenciesBag) *Retriever {
+func NewRetriever(b *bag.DependenciesBag) *Retriever {
 	return &Retriever{
-		bag: bag,
+		ServiceWithDependencies: bag.NewServiceWithDependencies(b),
+		slackClient:             b.Client.Slack,
+		ghClient:                b.Client.GitHub,
+		ghService:               b.Services.Github,
+		jiraService:             b.Services.Jira,
+		repository:              b.DB.Repository,
 	}
 }
 
@@ -94,7 +107,7 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 		}
 	}
 
-	issues, err := r.bag.Services.Jira.GetIssueInfoList(ctx, issueKeys)
+	issues, err := r.jiraService.GetIssueInfoList(ctx, issueKeys)
 	if err != nil {
 		return res, err
 	}
@@ -110,13 +123,11 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 // Если пользователь не найден в БД, всё равно возвращаем структуру пользователя, и ошибку ErrDbUserNotFoundButOtherData.
 // Иные ошибки игнорируются.
 func (r *Retriever) GetUserByGithubLoginSafe(ctx context.Context, userRef *models.UserRef) (*models.User, error) {
-	rep := r.bag.DB.Repository
-
 	if userRef == nil || userRef.GithubLogin == "" {
 		return &models.User{}, ErrUserRefIsEmpty
 	}
 
-	dbUser, err := rep.GetUserByGithubLogin(ctx, userRef.GithubLogin)
+	dbUser, err := r.repository.GetUserByGithubLogin(ctx, userRef.GithubLogin)
 
 	if err == nil {
 		return dbUser, nil
@@ -148,13 +159,11 @@ func (r *Retriever) GetUserByGithubLoginSafe(ctx context.Context, userRef *model
 // Если пользователь не найден в БД, всё равно возвращаем структуру пользователя, и ошибку ErrDbUserNotFoundButOtherData.
 // Иные ошибки игнорируются.
 func (r *Retriever) GetUserBySlackIdSafe(ctx context.Context, userRef *models.UserRef) (*models.User, error) {
-	rep := r.bag.DB.Repository
-
 	if userRef == nil || userRef.SlackId == "" {
 		return &models.User{}, ErrUserRefIsEmpty
 	}
 
-	dbUser, err := rep.GetBySlackId(ctx, userRef.SlackId)
+	dbUser, err := r.repository.GetBySlackId(ctx, userRef.SlackId)
 
 	if err == nil {
 		return dbUser, nil
@@ -193,10 +202,7 @@ func (r *Retriever) GetUserListByGithubLoginsSafe(ctx context.Context, githubLog
 }
 
 func (r *Retriever) GetSlackUserByGithubLogin(ctx context.Context, githubLogin string) (*slack.User, error) {
-	sl := r.bag.Client.Slack
-	gh := r.bag.Client.GitHub
-
-	rs, _, err := gh.Users.Get(ctx, githubLogin)
+	rs, _, err := r.ghClient.Users.Get(ctx, githubLogin)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +212,7 @@ func (r *Retriever) GetSlackUserByGithubLogin(ctx context.Context, githubLogin s
 		return nil, ErrGithubUserPublicEmailNotFound
 	}
 
-	slUsers, err := sl.GetUserByEmailContext(ctx, email)
+	slUsers, err := r.slackClient.GetUserByEmailContext(ctx, email)
 	if err != nil {
 		return nil, err
 	}
@@ -215,10 +221,7 @@ func (r *Retriever) GetSlackUserByGithubLogin(ctx context.Context, githubLogin s
 }
 
 func (r *Retriever) GetGithubUserBySlackId(ctx context.Context, slackId string) (*github.User, error) {
-	sl := r.bag.Client.Slack
-	gh := r.bag.Client.GitHub
-
-	slUser, err := sl.GetUserInfoContext(ctx, slackId)
+	slUser, err := r.slackClient.GetUserInfoContext(ctx, slackId)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +231,7 @@ func (r *Retriever) GetGithubUserBySlackId(ctx context.Context, slackId string) 
 		return nil, ErrSlackUserPublicEmailNotFound
 	}
 
-	ghUsers, _, err := gh.Search.Users(ctx, email, &github.SearchOptions{})
+	ghUsers, _, err := r.ghClient.Search.Users(ctx, email, &github.SearchOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +255,7 @@ func (r *Retriever) GetIssueKeysFromCommitMessages(ctx context.Context, prRefs .
 		wg.Add(1)
 		go func(ref *models.PullRequestRef) {
 			defer wg.Done()
-			ghCommits, err := r.bag.Services.Github.GetAllCommits(ctx, ref)
+			ghCommits, err := r.ghService.GetAllCommits(ctx, ref)
 			if err != nil {
 				logrus.Warning("Ignoring error while retrieving commits for PR:", err)
 				return
@@ -286,7 +289,7 @@ func (r *Retriever) getPullRequestInfoList(ctx context.Context, prRefs ...*model
 		wg.Add(1)
 		go func(ref *models.PullRequestRef) {
 			defer wg.Done()
-			ghPr, _, err := r.bag.Client.GitHub.PullRequests.Get(ctx, ref.Owner, ref.Repo, ref.Number)
+			ghPr, _, err := r.ghClient.PullRequests.Get(ctx, ref.Owner, ref.Repo, ref.Number)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, err)
