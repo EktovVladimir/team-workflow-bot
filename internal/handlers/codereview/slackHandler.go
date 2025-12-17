@@ -24,8 +24,6 @@ const (
 )
 
 var (
-	crPreviewSubmitActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.CrEditConfirmAndPost)
-	crPreviewCancelActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.CrEditCancel)
 	crPreviewPrListActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
 	crPreviewIssueListActionId = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.IssueRawListField)
 
@@ -37,11 +35,6 @@ var (
 	crPreviewModalCallbackId            = slackutils.GetCallbackId(slackviews.CrPreviewEditModal)
 	crThreadEditModalCallbackId         = slackutils.GetCallbackId(slackviews.CrThreadEditModal)
 	crThreadMenuDeleteConfirmCallbackId = slackutils.GetCallbackId(slackviews.CrShowDeleteConfirm)
-)
-
-// TODO конфиг
-const (
-	sendAsModal = true
 )
 
 type SlackHandler struct {
@@ -64,7 +57,7 @@ func (h *SlackHandler) HandleSlackSlashCommand(ctx context.Context, evt *socketm
 		return
 	}
 
-	h.handleCrStartRequest(ctx, evt, client, cmd, sendAsModal)
+	h.handleCrStartRequest(ctx, evt, client, cmd)
 }
 
 func (h *SlackHandler) HandleSlackBlockAction(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, callback slack.InteractionCallback) {
@@ -78,16 +71,6 @@ func (h *SlackHandler) HandleSlackBlockAction(ctx context.Context, evt *socketmo
 	triggerId := callback.TriggerID
 
 	actionId := callback.ActionCallback.BlockActions[0].ActionID
-
-	if actionId == crPreviewSubmitActionId {
-		h.handlePreviewSubmitAndPostFromEphemeral(ctx, evt, client, callback)
-		return
-	}
-
-	if actionId == crPreviewCancelActionId {
-		h.handleCancelFromEphemeral(ctx, evt, client, callback)
-		return
-	}
 
 	if actionId == crPreviewPrListActionId || actionId == crPreviewIssueListActionId {
 		h.handlePreviewChanged(ctx, evt, client, callback)
@@ -137,8 +120,7 @@ func (h *SlackHandler) handleCrStartRequest(
 	ctx context.Context,
 	evt *socketmode.Event,
 	client *socketmode.Client,
-	cmd slack.SlashCommand,
-	sendAsModal bool) {
+	cmd slack.SlashCommand) {
 
 	log := logrus.WithField("command", cmd.Command).
 		WithField("user", cmd.UserID).
@@ -166,22 +148,19 @@ func (h *SlackHandler) handleCrStartRequest(
 	}
 
 	triggerId := cmd.TriggerID
-	openedViewId := ""
 
-	if sendAsModal {
-		viewRs, err := client.OpenViewContext(
-			ctx,
-			triggerId,
-			slackviews.GetCrPreviewLoadingModal())
-		if err != nil {
-			log.Errorf("Failed to open modal view: %v", err)
-			h.slackService.SendEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
-				fmt.Sprintf("Ошибка при открытии модального окна превью код-ревью: %s", err.Error()))
-			return
-		}
-
-		openedViewId = viewRs.View.ID
+	viewRs, err := client.OpenViewContext(
+		ctx,
+		triggerId,
+		slackviews.GetCrPreviewLoadingModal())
+	if err != nil {
+		log.Errorf("Failed to open modal view: %v", err)
+		h.slackService.SendEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
+			fmt.Sprintf("Ошибка при открытии модального окна превью код-ревью: %s", err.Error()))
+		return
 	}
+
+	openedViewId := viewRs.View.ID
 
 	log.Debug("Collection code review context...")
 
@@ -196,33 +175,15 @@ func (h *SlackHandler) handleCrStartRequest(
 
 	log.Debug("Collection code review context completed.")
 
-	if sendAsModal {
-		_, err = client.UpdateViewContext(
-			ctx,
-			slackviews.GetCrPreviewModal(crContext, cmd.ChannelID, false),
-			"", "", openedViewId)
-		if err != nil {
-			log.Errorf("Failed to open modal view: %v", err)
-			h.slackService.SendEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
-				fmt.Sprintf("Ошибка при открытии модального окна превью код-ревью: %s", err.Error()))
-			return
-		}
-	} else {
-		notificationText := fmt.Sprintf("Превью #CR треда %s", crContext.KeyedIssue)
-
-		_, _, _, err = client.SendMessageContext(
-			ctx,
-			cmd.ChannelID,
-			slack.MsgOptionText(notificationText, false),
-			slack.MsgOptionPostEphemeral(cmd.UserID),
-			slack.MsgOptionBlocks(slackviews.GetCrPreviewEditAndConfirmBlocks(crContext, false)...))
-
-		if err != nil {
-			log.Errorf("Failed to send message to user: %v", err)
-			h.slackService.SendEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
-				fmt.Sprintf("Ошибка при отправке превью код-ревью: %s", err.Error()))
-			return
-		}
+	_, err = client.UpdateViewContext(
+		ctx,
+		slackviews.GetCrPreviewModal(crContext, cmd.ChannelID, false),
+		"", "", openedViewId)
+	if err != nil {
+		log.Errorf("Failed to open modal view: %v", err)
+		h.slackService.SendEphemeralErrorMessage(ctx, cmd.ChannelID, cmd.UserID,
+			fmt.Sprintf("Ошибка при открытии модального окна превью код-ревью: %s", err.Error()))
+		return
 	}
 }
 
@@ -236,63 +197,15 @@ func (h *SlackHandler) handleSubmitAndPostFromModal(
 	userId := callback.User.ID
 
 	form := h.getRequestRefFromPreviewEdit(callback.View.State.Values, slackviews.CrPreviewEdit, userId)
-	request := form.ToCodeReviewCollectRequest()
-	request.DisableCollectReviewersFromPr = true
-	request.DisableCollectIssuesFromPr = true
 
 	client.Ack(*evt.Request)
 
-	err := h.postCrThread(ctx, client, request, form.ChannelId, form.AsUser)
+	err := h.postCrThread(ctx, client, form)
 	if err != nil {
 		logrus.Error("Failed to handle Slack view submission:", err)
 		h.slackService.SendEphemeralErrorMessage(ctx, form.ChannelId, callback.User.ID,
 			fmt.Sprintf("Не удалось создать #CR тред: %s", err.Error()))
 		return
-	}
-}
-
-// handlePreviewSubmitAndPostFromEphemeral Скорее всего не будет использоваться.
-// Актуальная логика в handleSubmitAndPostFromModal
-func (h *SlackHandler) handlePreviewSubmitAndPostFromEphemeral(
-	ctx context.Context,
-	evt *socketmode.Event,
-	client *socketmode.Client,
-	callback slack.InteractionCallback) {
-
-	client.Ack(*evt.Request)
-
-	channelId := callback.Channel.ID
-	userId := callback.User.ID
-	responseUrl := callback.ResponseURL
-
-	form := h.getRequestRefFromPreviewEdit(callback.BlockActionState.Values, slackviews.CrPreviewEdit, userId)
-	request := form.ToCodeReviewCollectRequest()
-	request.DisableCollectReviewersFromPr = true
-	request.DisableCollectIssuesFromPr = true
-
-	err := h.postCrThread(ctx, client, request, channelId, form.AsUser)
-	if err != nil {
-		logrus.Error("Failed to handle and send cr thread:", err)
-		h.slackService.SendEphemeralErrorMessage(ctx, channelId, callback.User.ID,
-			fmt.Sprintf("Не удалось создать #CR тред: %s", err.Error()))
-		return
-	}
-
-	_, _, _ = client.PostMessageContext(ctx, channelId, slack.MsgOptionDeleteOriginal(responseUrl))
-}
-
-func (h *SlackHandler) handleCancelFromEphemeral(
-	ctx context.Context,
-	evt *socketmode.Event,
-	client *socketmode.Client,
-	callback slack.InteractionCallback) {
-
-	channelId := callback.Channel.ID
-	responseUrl := callback.ResponseURL
-
-	client.Ack(*evt.Request)
-	if responseUrl != "" {
-		_, _, _ = client.PostMessageContext(ctx, channelId, slack.MsgOptionDeleteOriginal(responseUrl))
 	}
 }
 
@@ -429,45 +342,15 @@ func (h *SlackHandler) handleThreadUpdateSubmit(
 
 	threadRef := models.ParseMessageRefFromKey(callback.View.PrivateMetadata)
 	userId := callback.User.ID
-	channelId := threadRef.ChannelId
-	ts := threadRef.Ts
 
-	dbCrThread, err := h.repository.GetCodeReviewThreadByThreadRef(ctx, threadRef)
+	form := h.getRequestRefFromPreviewEdit(callback.View.State.Values, slackviews.CrPreviewEdit, userId)
+
+	err := h.updateCrThread(ctx, client, threadRef, form, userId)
 	if err != nil {
-		logrus.Error("Failed to get code review thread by thread ref:", err)
-		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
-			"Ошибка при открытии модального окна редактирования #CR: "+err.Error())
-	}
-
-	form := h.getRequestRefFromPreviewEdit(callback.View.State.Values, slackviews.CrPreviewEdit, dbCrThread.Context.Requester.SlackId)
-	request := form.ToCodeReviewCollectRequest()
-	request.DisableCollectReviewersFromPr = true
-	request.DisableCollectIssuesFromPr = true
-
-	updatedCrContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, request)
-
-	dbCrThread.Context = updatedCrContext
-
-	err = h.repository.UpdateCodeReviewThread(ctx, dbCrThread)
-	if err != nil {
-		logrus.Error("Failed to update code review thread in DB:", err)
-		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
-			"Не удалось сохранить изменения в БД. "+err.Error())
+		h.slackService.SendThreadEphemeralErrorMessage(ctx, threadRef.ChannelId, threadRef.Ts, userId,
+			"Не удалось обновить #CR тред. Ошибка: "+err.Error())
 		return
 	}
-
-	messageBlocks := slackviews.GetCrThreadBlocks(updatedCrContext)
-
-	_, _, _, err = client.UpdateMessageContext(ctx, channelId, ts,
-		slack.MsgOptionBlocks(messageBlocks...))
-	if err != nil {
-		logrus.Error("Failed to update CR thread message:", err)
-		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
-			"Не удалось обновить сообщение треда #CR. "+err.Error())
-		return
-	}
-
-	//TODO нужно ли запостить сообщение о том, кто и что изменил?
 }
 
 func (h *SlackHandler) handleThreadMenuShowDeleteConfirm(
@@ -522,18 +405,20 @@ func (h *SlackHandler) handleDeleteCrThreadRequest(
 func (h *SlackHandler) postCrThread(
 	ctx context.Context,
 	client *socketmode.Client,
-	crRequest *models.CodeReviewCollectRequest,
-	channelId string,
-	sendAsUser bool) error {
+	form *CrPreviewFormData) error {
 
-	crContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, crRequest)
+	request := form.ToCodeReviewCollectRequest()
+	request.DisableCollectReviewersFromPr = true
+	request.DisableCollectIssuesFromPr = true
+
+	crContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, request)
 	if err != nil {
 		return err
 	}
 
 	messageBlocks := slackviews.GetCrThreadBlocks(crContext)
 
-	notificationText := fmt.Sprintf("#CR от <@%s> по задаче %s", crRequest.Requester.SlackId, crContext.KeyedIssue)
+	notificationText := fmt.Sprintf("#CR от <@%s> по задаче %s", request.Requester.SlackId, crContext.KeyedIssue)
 
 	options := []slack.MsgOption{
 		slack.MsgOptionText(notificationText, false),
@@ -542,19 +427,19 @@ func (h *SlackHandler) postCrThread(
 	}
 
 	userProfile, err := client.GetUserProfileContext(ctx, &slack.GetUserProfileParameters{
-		UserID: crRequest.Requester.SlackId,
+		UserID: request.Requester.SlackId,
 	})
 	if err != nil {
 		logrus.Error("Failed to get Slack user info:", err)
 	}
 
-	if sendAsUser && userProfile != nil {
+	if form.AsUser && userProfile != nil {
 		options = append(options,
 			slack.MsgOptionIconURL(userProfile.Image192),
 			slack.MsgOptionUsername(userProfile.RealName))
 	}
 
-	respChannel, respTs, err := client.PostMessageContext(ctx, channelId, options...)
+	respChannel, respTs, err := client.PostMessageContext(ctx, form.ChannelId, options...)
 	if err != nil {
 		return err
 	}
@@ -567,7 +452,7 @@ func (h *SlackHandler) postCrThread(
 
 	// Зарезервированное первое сообщение в треде. Сюда можно будет добавить доп. информацию
 	// Также тут кнопка вызова доступных действий с #CR
-	_, internalTs, err := client.PostMessageContext(ctx, channelId,
+	_, internalTs, err := client.PostMessageContext(ctx, form.ChannelId,
 		slack.MsgOptionTS(respTs),
 		slack.MsgOptionBlocks(slackviews.GetCrThreadInternalInfoBlocks()...))
 	if err == nil {
@@ -588,6 +473,51 @@ func (h *SlackHandler) postCrThread(
 	if err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (h *SlackHandler) updateCrThread(
+	ctx context.Context,
+	client *socketmode.Client,
+	threadRef *models.MessageRef,
+	form *CrPreviewFormData,
+	editorUserId string) error {
+
+	channelId := threadRef.ChannelId
+	ts := threadRef.Ts
+
+	dbCrThread, err := h.repository.GetCodeReviewThreadByThreadRef(ctx, threadRef)
+	if err != nil {
+		logrus.Error("Failed to get code review thread by thread ref:", err)
+		return err
+	}
+
+	request := form.ToCodeReviewCollectRequest()
+	request.DisableCollectReviewersFromPr = true
+	request.DisableCollectIssuesFromPr = true
+	request.Requester = dbCrThread.Context.Requester
+
+	updatedCrContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, request)
+
+	dbCrThread.Context = updatedCrContext
+
+	err = h.repository.UpdateCodeReviewThread(ctx, dbCrThread)
+	if err != nil {
+		logrus.Error("Failed to update code review thread in DB:", err)
+		return err
+	}
+
+	messageBlocks := slackviews.GetCrThreadBlocks(updatedCrContext)
+
+	_, _, _, err = client.UpdateMessageContext(ctx, channelId, ts,
+		slack.MsgOptionBlocks(messageBlocks...))
+	if err != nil {
+		logrus.Error("Failed to update CR thread message:", err)
+		return err
+	}
+
+	//TODO нужно ли запостить сообщение о том, кто и что изменил?
 
 	return nil
 }
