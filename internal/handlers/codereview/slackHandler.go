@@ -9,6 +9,7 @@ import (
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
 	"team-workflow-bot/pkg/slackutils"
+	"time"
 
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
@@ -510,14 +511,18 @@ func (h *SlackHandler) updateCrThread(
 
 	messageBlocks := slackviews.GetCrThreadBlocks(updatedCrContext)
 
+	updateContext := fmt.Sprintf("_updated by %s <!date^%s^at {date_short_pretty} {time_secs}| >_",
+		slackutils.GetEscapedMention(editorUserId),
+		slackutils.GetTimeStampShort(time.Now()))
+
+	messageBlocks = append(messageBlocks, slackutils.GetSimpleMarkdownContextBlock(updateContext))
+
 	_, _, _, err = client.UpdateMessageContext(ctx, channelId, ts,
 		slack.MsgOptionBlocks(messageBlocks...))
 	if err != nil {
 		logrus.Error("Failed to update CR thread message:", err)
 		return err
 	}
-
-	//TODO нужно ли запостить сообщение о том, кто и что изменил?
 
 	return nil
 }
