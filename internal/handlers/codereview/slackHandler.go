@@ -13,7 +13,6 @@ import (
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
-	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 )
 
@@ -35,7 +34,8 @@ var (
 
 	crThreadShowContextMenuActionId = slackutils.GetActionId(slackviews.CrThread, slackviews.CrThreadShowContextMenu)
 
-	crPreviewModalSubmitCallbackId      = slackutils.GetCallbackId(slackviews.CrPreviewEditModal)
+	crPreviewModalCallbackId            = slackutils.GetCallbackId(slackviews.CrPreviewEditModal)
+	crThreadEditModalCallbackId         = slackutils.GetCallbackId(slackviews.CrThreadEditModal)
 	crThreadMenuDeleteConfirmCallbackId = slackutils.GetCallbackId(slackviews.CrShowDeleteConfirm)
 )
 
@@ -95,12 +95,13 @@ func (h *SlackHandler) HandleSlackBlockAction(ctx context.Context, evt *socketmo
 	}
 
 	if actionId == crThreadMenuShowUpdateActionId {
-		//TODO
+		h.handleThreadMenuShowUpdateModal(ctx, evt, client, triggerId, channelId, threadTs, userId)
 		return
 	}
 
 	if actionId == crThreadMenuShowDeleteActionId {
 		h.handleThreadMenuShowDeleteConfirm(ctx, evt, client, triggerId, channelId, threadTs, userId)
+		return
 	}
 
 	if actionId == crThreadShowContextMenuActionId {
@@ -112,7 +113,7 @@ func (h *SlackHandler) HandleSlackBlockAction(ctx context.Context, evt *socketmo
 func (h *SlackHandler) HandleSlackViewSubmission(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, callback slack.InteractionCallback) {
 	userId := callback.User.ID
 
-	if callback.View.CallbackID == crPreviewModalSubmitCallbackId {
+	if callback.View.CallbackID == crPreviewModalCallbackId {
 		h.handleSubmitAndPostFromModal(ctx, evt, client, callback)
 		return
 	}
@@ -123,6 +124,10 @@ func (h *SlackHandler) HandleSlackViewSubmission(ctx context.Context, evt *socke
 		return
 	}
 
+	if callback.View.CallbackID == crThreadEditModalCallbackId {
+		h.handleThreadUpdateSubmit(ctx, evt, client, callback)
+		return
+	}
 }
 
 // handleCrStartRequest Обработка команды /cr или /servit cr
@@ -340,7 +345,13 @@ func (h *SlackHandler) handlePreviewChanged(
 
 	if callback.Container.Type == "view" {
 		viewId := callback.View.ID
-		newViewRequest := slackviews.GetCrPreviewModal(crContext, channelId, true)
+
+		var newViewRequest slack.ModalViewRequest
+		if callback.View.CallbackID == crPreviewModalCallbackId {
+			newViewRequest = slackviews.GetCrPreviewModal(crContext, channelId, true)
+		} else if callback.View.CallbackID == crThreadEditModalCallbackId {
+			newViewRequest = slackviews.GetCrEditModal(crContext, callback.View.PrivateMetadata, true)
+		}
 
 		_, err = client.UpdateViewContext(ctx, newViewRequest, "", "", viewId)
 		_ = err
@@ -375,19 +386,14 @@ func (h *SlackHandler) handleShowThreadContextMenu(
 	}
 }
 
-// handleCrUpdateRequest Обработка упоминания бота с командой /cr в треде #CR
-// Позволяет отредактировать или удалить опубликованный #CR тред.
-// Потенциально может вызываться не только из меншона,
-// тогда потребуется заменить параметр message на общую модель с контекстом.
-func (h *SlackHandler) handleCrUpdateRequest(
+func (h *SlackHandler) handleThreadMenuShowUpdateModal(
 	ctx context.Context,
 	evt *socketmode.Event,
 	client *socketmode.Client,
-	message *slackevents.AppMentionEvent) {
-
-	ts := message.ThreadTimeStamp
-	channelId := message.Channel
-	userId := message.User
+	triggerId string,
+	channelId string,
+	ts string,
+	userId string) {
 
 	client.Ack(*evt.Request)
 
@@ -396,15 +402,72 @@ func (h *SlackHandler) handleCrUpdateRequest(
 	dbCrThread, err := h.repository.GetCodeReviewThreadByThreadRef(ctx, threadRef)
 	if err != nil {
 		logrus.Error("Failed to get code review thread by thread ref:", err)
-
-		h.slackService.SendEphemeralErrorMessage(ctx, channelId, userId,
+		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
 			"Не удалось найти информацию В БД. "+err.Error())
-
 		return
 	}
 
-	//TODO
-	_ = dbCrThread
+	_, err = client.OpenViewContext(
+		ctx,
+		triggerId,
+		slackviews.GetCrEditModal(dbCrThread.Context, threadRef.Key, false))
+	if err != nil {
+		logrus.Errorf("Failed to open modal view: %v", err)
+		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
+			"Ошибка при открытии модального редактирования #CR: "+err.Error())
+		return
+	}
+}
+
+func (h *SlackHandler) handleThreadUpdateSubmit(
+	ctx context.Context,
+	evt *socketmode.Event,
+	client *socketmode.Client,
+	callback slack.InteractionCallback) {
+
+	client.Ack(*evt.Request)
+
+	threadRef := models.ParseMessageRefFromKey(callback.View.PrivateMetadata)
+	userId := callback.User.ID
+	channelId := threadRef.ChannelId
+	ts := threadRef.Ts
+
+	dbCrThread, err := h.repository.GetCodeReviewThreadByThreadRef(ctx, threadRef)
+	if err != nil {
+		logrus.Error("Failed to get code review thread by thread ref:", err)
+		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
+			"Ошибка при открытии модального окна редактирования #CR: "+err.Error())
+	}
+
+	form := h.getRequestRefFromPreviewEdit(callback.View.State.Values, slackviews.CrPreviewEdit, dbCrThread.Context.Requester.SlackId)
+	request := form.ToCodeReviewCollectRequest()
+	request.DisableCollectReviewersFromPr = true
+	request.DisableCollectIssuesFromPr = true
+
+	updatedCrContext, err := h.retriever.CollectCodeReviewContextFromSlack(ctx, request)
+
+	dbCrThread.Context = updatedCrContext
+
+	err = h.repository.UpdateCodeReviewThread(ctx, dbCrThread)
+	if err != nil {
+		logrus.Error("Failed to update code review thread in DB:", err)
+		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
+			"Не удалось сохранить изменения в БД. "+err.Error())
+		return
+	}
+
+	messageBlocks := slackviews.GetCrThreadBlocks(updatedCrContext)
+
+	_, _, _, err = client.UpdateMessageContext(ctx, channelId, ts,
+		slack.MsgOptionBlocks(messageBlocks...))
+	if err != nil {
+		logrus.Error("Failed to update CR thread message:", err)
+		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
+			"Не удалось обновить сообщение треда #CR. "+err.Error())
+		return
+	}
+
+	//TODO нужно ли запостить сообщение о том, кто и что изменил?
 }
 
 func (h *SlackHandler) handleThreadMenuShowDeleteConfirm(

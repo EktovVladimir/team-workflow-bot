@@ -12,6 +12,7 @@ import (
 
 const (
 	CrPreviewEditModal = "cr_preview_edit_modal"
+	CrThreadEditModal  = "cr_thread_edit_modal"
 
 	CrPreviewEdit       = "cr_preview_edit"
 	CrPreviewLoading    = "cr_preview_loading"
@@ -162,32 +163,6 @@ func GetCrPreviewEditAndConfirmBlocks(cr *models.CodeReviewContext, resetIssueLi
 	return res
 }
 
-func GetCrThreadUpdateBlocks(cr *models.CodeReviewContext) []slack.Block {
-	base := CrThreadEdit
-
-	inputs := GetCrPreviewEditBlocks(cr, base, false)
-
-	cancelButton := slack.NewButtonBlockElement(
-		slackutils.GetActionId(base, CrEditCancel),
-		CrEditCancel,
-		slackutils.GetEmojiPlainTextObject("Отмена :x:"))
-
-	confirmButton := slack.NewButtonBlockElement(
-		slackutils.GetActionId(base, CrEditConfirmAndUpdate),
-		CrEditConfirmAndUpdate,
-		slackutils.GetEmojiPlainTextObject("Обновить тред :check_mark:"))
-
-	confirmActionBlock := slack.NewActionBlock(
-		slackutils.GetBlockId(base, CrEditConfirmAndUpdate),
-		cancelButton,
-		confirmButton,
-	)
-
-	res := append(inputs, confirmActionBlock)
-
-	return res
-}
-
 func GetCrPreviewModal(cr *models.CodeReviewContext, channelId string, resetIssueList bool) slack.ModalViewRequest {
 	base := CrPreviewEdit
 
@@ -202,12 +177,31 @@ func GetCrPreviewModal(cr *models.CodeReviewContext, channelId string, resetIssu
 	return slack.ModalViewRequest{
 		CallbackID: slackutils.GetCallbackId(CrPreviewEditModal),
 		Type:       slack.VTModal,
-		Title:      slackutils.GetEmojiPlainTextObject("Создание треда #CR"),
+		Title:      slackutils.GetSimplePlainTextObject("Создание #CR"),
 		Submit:     slackutils.GetSimplePlainTextObject("Подтвердить"),
 		Close:      slackutils.GetSimplePlainTextObject("Отмена"),
 		Blocks: slack.Blocks{
 			BlockSet: blocks,
 		},
+	}
+}
+
+func GetCrEditModal(cr *models.CodeReviewContext, metaData string, resetIssueList bool) slack.ModalViewRequest {
+	base := CrPreviewEdit
+
+	blocks := make([]slack.Block, 0)
+	blocks = append(blocks, GetCrPreviewEditBlocks(cr, base, resetIssueList)...)
+
+	return slack.ModalViewRequest{
+		CallbackID: slackutils.GetCallbackId(CrThreadEditModal),
+		Type:       slack.VTModal,
+		Title:      slackutils.GetSimplePlainTextObject("Редактирование #CR"),
+		Submit:     slackutils.GetSimplePlainTextObject("Подтвердить"),
+		Close:      slackutils.GetSimplePlainTextObject("Отмена"),
+		Blocks: slack.Blocks{
+			BlockSet: blocks,
+		},
+		PrivateMetadata: metaData,
 	}
 }
 

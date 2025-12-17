@@ -109,7 +109,7 @@ func (r *Retriever) CollectCodeReviewContextFromSlack(ctx context.Context, reque
 
 	issues, err := r.jiraService.GetIssueInfoList(ctx, issueKeys)
 	if err != nil {
-		return res, err
+		logrus.Warning("Ignoring error while retrieving issues for code review context:", err)
 	}
 
 	res.Issues = issues
