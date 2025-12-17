@@ -2,9 +2,18 @@ package slackflow
 
 import (
 	"context"
+	"team-workflow-bot/pkg/slackutils"
 
 	"github.com/slack-go/slack"
 )
+
+type ShowOptionsModalParams struct {
+	Title       string
+	Text        string
+	ConfirmText string
+	CancelText  string
+	MetaData    string
+}
 
 type Service struct {
 	client *slack.Client
@@ -86,4 +95,33 @@ func (s *Service) GetMessageByTs(ctx context.Context, channelId string, ts strin
 	}
 
 	return &mess.Messages[0], nil
+}
+
+func (s *Service) ShowOptionsModal(
+	ctx context.Context,
+	triggerId string,
+	callBackId string,
+	params *ShowOptionsModalParams) (viewId string, err error) {
+	blocks := []slack.Block{
+		slackutils.GetMarkdownTextSectionBlock(params.Text),
+	}
+
+	viewRs, err := s.client.OpenViewContext(
+		ctx,
+		triggerId,
+		slack.ModalViewRequest{
+			CallbackID: callBackId,
+			Type:       slack.VTModal,
+			Title:      slackutils.GetEmojiPlainTextObject(params.Title),
+			Submit:     slackutils.GetSimplePlainTextObject(params.ConfirmText),
+			Close:      slackutils.GetSimplePlainTextObject(params.CancelText),
+			Blocks: slack.Blocks{
+				BlockSet: blocks,
+			},
+			PrivateMetadata: params.MetaData,
+		})
+	if err != nil {
+		return "", err
+	}
+	return viewRs.View.ID, nil
 }

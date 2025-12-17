@@ -13,9 +13,11 @@ import (
 const (
 	CrPreviewEditModal = "cr_preview_edit_modal"
 
-	CrPreviewEdit    = "cr_preview_edit"
-	CrPreviewLoading = "cr_preview_loading"
-	CrThreadEdit     = "cr_thread_edit"
+	CrPreviewEdit       = "cr_preview_edit"
+	CrPreviewLoading    = "cr_preview_loading"
+	CrThreadEdit        = "cr_thread_edit"
+	CrThread            = "cr_thread"
+	CrThreadContextMenu = "cr_thread_context_menu"
 
 	ChannelField            = "channel"
 	ReviewersField          = "reviewers"
@@ -26,6 +28,10 @@ const (
 	CrEditConfirmAndPost   = "confirm_post"
 	CrEditConfirmAndUpdate = "confirm_update"
 	CrEditDelete           = "delete"
+
+	CrThreadShowContextMenu = "show_context_menu"
+	CrShowDeleteConfirm     = "show_delete_confirm"
+	CrShowUpdateForm        = "show_update_form"
 )
 
 func GetCrPreviewEditBlocks(cr *models.CodeReviewContext, base string, resetIssueList bool) []slack.Block {
@@ -111,6 +117,21 @@ func GetCrThreadBlocks(cr *models.CodeReviewContext) []slack.Block {
 	contextText := fmt.Sprintf("Создано через бота по запросу <@%s>", requesterSlackName)
 
 	res = append(res, slackutils.GetSimpleMarkdownContextBlock(contextText))
+
+	return res
+}
+
+func GetCrThreadInternalInfoBlocks() []slack.Block {
+	res := []slack.Block{
+		slackutils.GetMarkdownTextSectionBlock("Зарезервировано для дополнительной информации"),
+		slack.NewSectionBlock(
+			slackutils.GetMarkdownTextObject("Показать доступные действия:"),
+			nil,
+			slack.NewAccessory(slack.NewButtonBlockElement(
+				slackutils.GetActionId(CrThread, CrThreadShowContextMenu),
+				CrThreadShowContextMenu,
+				slackutils.GetPlainTextObject(":arrow_down_small:")))),
+	}
 
 	return res
 }
@@ -208,6 +229,30 @@ func GetCrPreviewLoadingModal() slack.ModalViewRequest {
 	}
 }
 
+func GetCrThreadContextMenuBlocks() []slack.Block {
+	base := CrThreadContextMenu
+
+	updateBtn := slack.NewButtonBlockElement(
+		slackutils.GetActionId(base, CrShowUpdateForm),
+		slackutils.GetActionId(base, CrShowUpdateForm),
+		slackutils.GetEmojiPlainTextObject("Редактировать"))
+
+	deleteBtn := slack.NewButtonBlockElement(
+		slackutils.GetActionId(base, CrShowDeleteConfirm),
+		slackutils.GetActionId(base, CrShowDeleteConfirm),
+		slackutils.GetEmojiPlainTextObject("Удалить #CR тред"))
+	deleteBtn.Style = slack.StyleDanger
+
+	return []slack.Block{
+		slack.NewActionBlock(
+			//TODO blockId пока не имеет значения.
+			slackutils.GetBlockId(base, CrShowUpdateForm),
+			updateBtn,
+			deleteBtn,
+		),
+	}
+}
+
 func GetPullRequestListBlocks(prs ...*models.PullRequestInfo) []slack.Block {
 	res := make([]slack.Block, 0)
 
@@ -249,6 +294,31 @@ func GetReviewersBlocks(reviewers []*models.UserRef) []slack.Block {
 
 	res := []slack.Block{
 		slackutils.GetMarkdownTextSectionBlock(fmt.Sprintf("*#CR* %s", reviewersText)),
+	}
+
+	notValidBlock := getNotValidReviewersContextBlock(notFoundGithubLogins)
+	if notValidBlock != nil {
+		res = append(res, notValidBlock)
+	}
+
+	return res
+}
+
+func GetReviewersWithActionButtonBlocks(reviewers []*models.UserRef) []slack.Block {
+	validNames, notFoundGithubLogins := resolveReviewerNames(reviewers)
+
+	reviewersText := strings.Join(lo.Map(validNames, func(s string, _ int) string {
+		return fmt.Sprintf("<@%s>", s)
+	}), " ")
+
+	res := []slack.Block{
+		slack.NewSectionBlock(
+			slackutils.GetMarkdownTextObject(fmt.Sprintf("*#CR* %s", reviewersText)),
+			nil,
+			slack.NewAccessory(slack.NewButtonBlockElement(
+				slackutils.GetActionId(CrThread, CrThreadShowContextMenu),
+				CrThreadShowContextMenu,
+				slackutils.GetPlainTextObject(":pencil:")))),
 	}
 
 	notValidBlock := getNotValidReviewersContextBlock(notFoundGithubLogins)

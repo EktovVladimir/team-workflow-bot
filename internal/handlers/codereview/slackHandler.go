@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"team-workflow-bot/internal/bag"
+	"team-workflow-bot/internal/integrations/slackflow"
 	"team-workflow-bot/internal/integrations/slackflow/slackviews"
 	"team-workflow-bot/internal/models"
 	"team-workflow-bot/pkg/slackutils"
@@ -21,6 +22,21 @@ const (
 	handlerNameMetaField         = "handler"
 	contextMetaField             = "context"
 	handlerNameMetaValue         = "codereview.Handler"
+)
+
+var (
+	crPreviewSubmitActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.CrEditConfirmAndPost)
+	crPreviewCancelActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.CrEditCancel)
+	crPreviewPrListActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
+	crPreviewIssueListActionId = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.IssueRawListField)
+
+	crThreadMenuShowUpdateActionId = slackutils.GetActionId(slackviews.CrThreadContextMenu, slackviews.CrShowUpdateForm)
+	crThreadMenuShowDeleteActionId = slackutils.GetActionId(slackviews.CrThreadContextMenu, slackviews.CrShowDeleteConfirm)
+
+	crThreadShowContextMenuActionId = slackutils.GetActionId(slackviews.CrThread, slackviews.CrThreadShowContextMenu)
+
+	crPreviewModalSubmitCallbackId      = slackutils.GetCallbackId(slackviews.CrPreviewEditModal)
+	crThreadMenuDeleteConfirmCallbackId = slackutils.GetCallbackId(slackviews.CrShowDeleteConfirm)
 )
 
 // TODO конфиг
@@ -56,14 +72,12 @@ func (h *SlackHandler) HandleSlackBlockAction(ctx context.Context, evt *socketmo
 		return
 	}
 
-	actionId := callback.ActionCallback.BlockActions[0].ActionID
+	channelId := callback.Channel.ID
+	userId := callback.User.ID
+	threadTs := callback.Container.ThreadTs
+	triggerId := callback.TriggerID
 
-	var (
-		crPreviewSubmitActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.CrEditConfirmAndPost)
-		crPreviewCancelActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.CrEditCancel)
-		crPreviewPrListActionId    = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.PullRequestRawListField)
-		crPreviewIssueListActionId = slackutils.GetActionId(slackviews.CrPreviewEdit, slackviews.IssueRawListField)
-	)
+	actionId := callback.ActionCallback.BlockActions[0].ActionID
 
 	if actionId == crPreviewSubmitActionId {
 		h.handlePreviewSubmitAndPostFromEphemeral(ctx, evt, client, callback)
@@ -79,38 +93,36 @@ func (h *SlackHandler) HandleSlackBlockAction(ctx context.Context, evt *socketmo
 		h.handlePreviewChanged(ctx, evt, client, callback)
 		return
 	}
+
+	if actionId == crThreadMenuShowUpdateActionId {
+		//TODO
+		return
+	}
+
+	if actionId == crThreadMenuShowDeleteActionId {
+		h.handleThreadMenuShowDeleteConfirm(ctx, evt, client, triggerId, channelId, threadTs, userId)
+	}
+
+	if actionId == crThreadShowContextMenuActionId {
+		h.handleShowThreadContextMenu(ctx, evt, client, channelId, threadTs, userId)
+		return
+	}
 }
 
 func (h *SlackHandler) HandleSlackViewSubmission(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, callback slack.InteractionCallback) {
-	if callback.View.CallbackID != slackutils.GetCallbackId(slackviews.CrPreviewEditModal) {
-		return
-	}
-	h.handleSubmitAndPostFromModal(ctx, evt, client, callback)
-}
+	userId := callback.User.ID
 
-func (h *SlackHandler) HandleSlackAppMentionEvent(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, message *slackevents.AppMentionEvent) {
-	ts := message.ThreadTimeStamp
-
-	if strings.Contains(message.Text, "/cr") && ts != "" {
-		h.handleCrUpdateRequest(ctx, evt, client, message)
+	if callback.View.CallbackID == crPreviewModalSubmitCallbackId {
+		h.handleSubmitAndPostFromModal(ctx, evt, client, callback)
 		return
 	}
 
-	if strings.Contains(message.Text, "/delete") && ts != "" {
-		h.handleCrDeleteRequest(ctx, evt, client, message.Channel, ts, message.User)
+	if callback.View.CallbackID == crThreadMenuDeleteConfirmCallbackId {
+		threadRef := models.ParseMessageRefFromKey(callback.View.PrivateMetadata)
+		h.handleDeleteCrThreadRequest(ctx, evt, client, threadRef.ChannelId, threadRef.Ts, userId)
 		return
 	}
-}
 
-// HandleSlackDirectMessageEvent обработчик ЛС с ботом.
-// Пока что добавлен в тестовых целях, так как AppMentionEvent не обрабатывается в ЛС.
-func (h *SlackHandler) HandleSlackDirectMessageEvent(ctx context.Context, evt *socketmode.Event, client *socketmode.Client, message *slackevents.MessageEvent) {
-	ts := message.ThreadTimeStamp
-
-	if strings.Contains(message.Text, "/delete") && ts != "" {
-		h.handleCrDeleteRequest(ctx, evt, client, message.Channel, ts, message.User)
-		return
-	}
 }
 
 // handleCrStartRequest Обработка команды /cr или /servit cr
@@ -337,6 +349,32 @@ func (h *SlackHandler) handlePreviewChanged(
 	return
 }
 
+func (h *SlackHandler) handleShowThreadContextMenu(
+	ctx context.Context,
+	evt *socketmode.Event,
+	client *socketmode.Client,
+	channelId string,
+	ts string,
+	userId string) {
+
+	client.Ack(*evt.Request)
+
+	//TODO проверка на пермишены
+
+	blocks := slackviews.GetCrThreadContextMenuBlocks()
+
+	_, err := client.PostEphemeralContext(ctx, channelId, userId,
+		slack.MsgOptionText("Меню управления #CR тредом:", false),
+		slack.MsgOptionTS(ts),
+		slack.MsgOptionBlocks(blocks...))
+	if err != nil {
+		logrus.Error("Failed to send CR thread context menu:", err)
+		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
+			"Ошибка при открытии контекстного меню #CR треда. "+err.Error())
+		return
+	}
+}
+
 // handleCrUpdateRequest Обработка упоминания бота с командой /cr в треде #CR
 // Позволяет отредактировать или удалить опубликованный #CR тред.
 // Потенциально может вызываться не только из меншона,
@@ -353,7 +391,7 @@ func (h *SlackHandler) handleCrUpdateRequest(
 
 	client.Ack(*evt.Request)
 
-	threadRef := models.NewThreadRef(channelId, ts)
+	threadRef := models.NewMessageRef(channelId, ts)
 
 	dbCrThread, err := h.repository.GetCodeReviewThreadByThreadRef(ctx, threadRef)
 	if err != nil {
@@ -369,39 +407,51 @@ func (h *SlackHandler) handleCrUpdateRequest(
 	_ = dbCrThread
 }
 
-func (h *SlackHandler) handleCrDeleteRequest(
+func (h *SlackHandler) handleThreadMenuShowDeleteConfirm(
 	ctx context.Context,
 	evt *socketmode.Event,
 	client *socketmode.Client,
-	channelId string, ts string, userId string) {
+	triggerId string,
+	channelId string,
+	ts string,
+	userId string) {
 
 	client.Ack(*evt.Request)
 
-	threadRef := models.NewThreadRef(channelId, ts)
+	_, err := h.slackService.ShowOptionsModal(ctx, triggerId, crThreadMenuDeleteConfirmCallbackId, &slackflow.ShowOptionsModalParams{
+		Title: "Удалить тред #CR?",
+		Text: ":warning: Будет удалена запись из БД и само сообщение в слак. Операция необратима.\n" +
+			"Если в треде есть пользовательские сообщения, они удалены не будут.",
+		ConfirmText: "Удалить",
+		CancelText:  "Отмена",
+		MetaData:    models.NewMessageRef(channelId, ts).Key,
+	})
+	if err != nil {
+		logrus.Error("Failed to show delete CR thread confirm modal:", err)
+		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
+			"Не удалось открыть модальное окно "+err.Error())
+		return
+	}
+}
+
+func (h *SlackHandler) handleDeleteCrThreadRequest(
+	ctx context.Context,
+	evt *socketmode.Event,
+	client *socketmode.Client,
+	channelId string,
+	ts string,
+	userId string) {
+
+	client.Ack(*evt.Request)
+	threadRef := models.NewMessageRef(channelId, ts)
 
 	//TODO проверка метаданных, что это CR тред
 	//TODO проверка прав на удаление
 
-	dbCrThread, err := h.repository.GetCodeReviewThreadByThreadRef(ctx, threadRef)
+	err := h.deleteCrThread(ctx, client, threadRef)
 	if err != nil {
-		logrus.Error("Failed to get code review thread by thread ref:", err)
-		h.slackService.SendEphemeralErrorMessage(ctx, channelId, userId,
-			"Не удалось найти информацию В БД. Просто удалю сообщение. Ошибка: "+err.Error())
-	} else {
-		err = h.repository.DeleteCodeReviewThread(ctx, dbCrThread.Id)
-		if err != nil {
-			logrus.Error("Failed to delete code review thread from DB:", err)
-			h.slackService.SendEphemeralErrorMessage(ctx, channelId, userId,
-				"Не удалось удалить информацию из БД. Просто удалю сообщение. Ошибка: "+err.Error())
-		}
-	}
-
-	_, _, err = client.DeleteMessageContext(ctx, channelId, ts)
-	if err != nil {
-		logrus.Error("Failed to delete Slack message:", err)
-		h.slackService.SendThreadEphemeralErrorMessage(ctx, channelId, ts, userId,
-			"Не удалось удалить сообщение в Slack. Ошибка: "+err.Error())
-		return
+		h.slackService.SendThreadEphemeralErrorMessage(ctx, threadRef.ChannelId, threadRef.Ts, userId,
+			"Не удалось удалить #CR тред. Ошибка: : "+err.Error())
 	}
 }
 
@@ -447,9 +497,20 @@ func (h *SlackHandler) postCrThread(
 	}
 
 	dbRecord := &models.CodeReviewThread{
-		Thread:  models.NewThreadRef(respChannel, respTs),
+		Thread:  models.NewMessageRef(respChannel, respTs),
 		Context: crContext,
 		Status:  models.CodeReviewStatusOpen,
+	}
+
+	// Зарезервированное первое сообщение в треде. Сюда можно будет добавить доп. информацию
+	// Также тут кнопка вызова доступных действий с #CR
+	_, internalTs, err := client.PostMessageContext(ctx, channelId,
+		slack.MsgOptionTS(respTs),
+		slack.MsgOptionBlocks(slackviews.GetCrThreadInternalInfoBlocks()...))
+	if err == nil {
+		dbRecord.InternalMessages = []*models.MessageRef{
+			models.NewMessageRef(respChannel, internalTs),
+		}
 	}
 
 	messageLink, err := client.GetPermalinkContext(ctx, &slack.PermalinkParameters{
@@ -462,6 +523,40 @@ func (h *SlackHandler) postCrThread(
 
 	_, err = h.repository.CreateCodeReviewThread(ctx, dbRecord)
 	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (h *SlackHandler) deleteCrThread(
+	ctx context.Context,
+	client *socketmode.Client,
+	threadRef *models.MessageRef) error {
+
+	dbCrThread, err := h.repository.GetCodeReviewThreadByThreadRef(ctx, threadRef)
+	if err != nil {
+		logrus.Error("Failed to get code review thread by thread ref:", err)
+		return err
+	}
+
+	err = h.repository.DeleteCodeReviewThread(ctx, dbCrThread.Id)
+	if err != nil {
+		logrus.Error("Failed to delete code review thread from DB:", err)
+		return err
+	}
+
+	for _, ref := range dbCrThread.InternalMessages {
+		_, _, err = client.DeleteMessageContext(ctx, ref.ChannelId, ref.Ts)
+		if err != nil {
+			logrus.Error("Failed to delete Slack thread message:", err)
+			return err
+		}
+	}
+
+	_, _, err = client.DeleteMessageContext(ctx, threadRef.ChannelId, threadRef.Ts)
+	if err != nil {
+		logrus.Error("Failed to delete Slack message:", err)
 		return err
 	}
 

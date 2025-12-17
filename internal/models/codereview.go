@@ -13,11 +13,12 @@ const (
 )
 
 type CodeReviewThread struct {
-	Id          UniqId             `bson:"_id,omitempty"`
-	Thread      *ThreadRef         `bson:"thread"`
-	MessageLink string             `bson:"message_link,omitempty"`
-	Status      string             `bson:"status,omitempty"`
-	Context     *CodeReviewContext `bson:"context"`
+	Id               UniqId             `bson:"_id,omitempty"`
+	Thread           *MessageRef        `bson:"thread"`
+	InternalMessages []*MessageRef      `bson:"internal_messages"`
+	MessageLink      string             `bson:"message_link,omitempty"`
+	Status           string             `bson:"status,omitempty"`
+	Context          *CodeReviewContext `bson:"context"`
 
 	SoftDeletable `bson:",inline"`
 	Auditable     `bson:",inline"`

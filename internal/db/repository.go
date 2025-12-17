@@ -202,11 +202,11 @@ func (r *Repository) GetCodeReviewThreadByPullRequestRef(ctx context.Context, re
 	return &crt, nil
 }
 
-func (r *Repository) GetCodeReviewThreadByThreadRef(ctx context.Context, ref *models.ThreadRef) (*models.CodeReviewThread, error) {
+func (r *Repository) GetCodeReviewThreadByThreadRef(ctx context.Context, ref *models.MessageRef) (*models.CodeReviewThread, error) {
 	var crt models.CodeReviewThread
 	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})
 	err := r.db.Collection(CodeReviewThreadsCollection).
-		FindOne(ctx, bson.M{"thread.ref.key": ref.Key}, opts).
+		FindOne(ctx, bson.M{"thread.key": ref.Key}, opts).
 		Decode(&crt)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
